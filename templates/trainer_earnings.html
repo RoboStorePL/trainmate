@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>My earnings</h1><p class="muted">Awaiting payout: {{ total_accrued }} PLN</p>
+  <div class="cards">{% for accrual in accruals %}<article>
+    <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.session.title }}</h2>
+    <p>{{ accrual.participant_count }} participants × {{ accrual.rate_per_participant }} PLN</p>
+    <p><strong>{{ accrual.amount }} PLN</strong></p>
+  </article>{% empty %}<p>No completed sessions with earnings yet.</p>{% endfor %}</div>
+{% endblock %}

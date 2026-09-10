@@ -135,6 +135,9 @@ label { display: block; margin-bottom: 6px; font-weight: 650; }
 .pagination { display: flex; justify-content: center; gap: 25px; padding: 24px; }
 footer { padding-top: 40px; }
 
+.inline-form { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+.inline-form label { grid-column: 1 / -1; }
+
 @media (max-width: 800px) {
   aside { position: static; width: auto; height: auto; padding: 20px; }
   nav { display: flex; flex-wrap: wrap; margin-top: 16px; }

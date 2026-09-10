@@ -4,13 +4,25 @@ from typing import Any
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from training.models import Specialization, Trainer, TrainingSession
+from training.models import MembershipPlan, Specialization, Trainer, TrainingSession
 
 
 class Command(BaseCommand):
     help = "Create sample disciplines, coaches and upcoming sessions."
 
     def handle(self, *args: Any, **options: Any) -> None:
+        for plan in [
+            ("Starter", "A flexible start for trying TrainMate.", 4, 30, 80),
+            ("Active", "A regular monthly training rhythm.", 8, 30, 140),
+            ("Committed", "More sessions for consistent progress.", 12, 45, 180),
+        ]:
+            MembershipPlan.objects.get_or_create(
+                title=plan[0],
+                defaults={
+                    "description": plan[1], "sessions_count": plan[2],
+                    "duration_days": plan[3], "price": plan[4],
+                },
+            )
         for index, name in enumerate(["Fitness", "Rehabilitation", "Jiu-jitsu", "Yoga"]):
             discipline, _ = Specialization.objects.get_or_create(
                 name=name, defaults={"description": f"Explore guided {name.lower()} sessions."},

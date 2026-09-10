@@ -1,12 +1,14 @@
-from django.contrib import messages
+from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import F, QuerySet
+from django.db.models import F, QuerySet, Sum
 from django.http import HttpRequest, HttpResponse
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,8 +17,11 @@ from django.utils import timezone
 from django.views import generic
 from django.views.decorators.http import require_POST
 
-from .forms import ProfileForm, SessionForm, SignUpForm, TrainerSessionForm
-from .models import Specialization, Trainer, TrainingSession, User
+from .forms import ProfileForm, SessionForm, SignUpForm, TrainerForm, TrainerSessionForm
+from .models import (
+    BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
+    SalaryAccrual, Specialization, Trainer, TrainingSession, User,
+)
 
 
 def is_trainer(user: User) -> bool:
@@ -128,6 +133,104 @@ class ClientList(AdminRequiredMixin, generic.ListView):
         return context
 
 
+class MembershipDashboard(LoginRequiredMixin, generic.ListView):
+    model = Membership
+    template_name = "membership_dashboard.html"
+    context_object_name = "memberships"
+
+    def get_queryset(self) -> QuerySet[Membership]:
+        return Membership.objects.filter(user=self.request.user)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context["plans"] = MembershipPlan.objects.filter(is_active=True)
+        context["transactions"] = BalanceTransaction.objects.filter(
+            user=self.request.user,
+        )[:5]
+        return context
+
+
+class TrainerEarnings(LoginRequiredMixin, UserPassesTestMixin, generic.ListView):
+    model = SalaryAccrual
+    template_name = "trainer_earnings.html"
+    context_object_name = "accruals"
+
+    def test_func(self) -> bool:
+        return is_trainer(self.request.user)
+
+    def get_queryset(self) -> QuerySet[SalaryAccrual]:
+        return SalaryAccrual.objects.filter(
+            trainer=self.request.user.trainer_profile,
+        ).select_related("session")
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context["total_accrued"] = self.get_queryset().exclude(
+            status=SalaryAccrual.Status.PAID,
+        ).aggregate(total=Sum("amount"))["total"] or 0
+        return context
+
+
+class PayoutList(AdminRequiredMixin, generic.ListView):
+    model = SalaryAccrual
+    template_name = "payout_list.html"
+    context_object_name = "accruals"
+
+    def get_queryset(self) -> QuerySet[SalaryAccrual]:
+        return SalaryAccrual.objects.select_related("trainer", "session")
+
+
+@login_required
+@require_POST
+def add_balance(request: HttpRequest) -> HttpResponse:
+    try:
+        amount = Decimal(request.POST.get("amount", "")).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        amount = Decimal("0.00")
+    if not Decimal("0.00") < amount <= Decimal("10000.00"):
+        messages.error(request, "Enter a top-up amount between 0.01 and 10,000.00 PLN.")
+        return redirect("training:membership")
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        user.balance += amount
+        user.save(update_fields=["balance"])
+        BalanceTransaction.objects.create(
+            user=user, amount=amount, kind=BalanceTransaction.Kind.TOP_UP,
+            description="Demo balance top-up",
+        )
+    messages.success(request, f"{amount} PLN was added to your demo balance.")
+    return redirect("training:membership")
+
+
+@login_required
+@require_POST
+def purchase_membership(request: HttpRequest, pk: int) -> HttpResponse:
+    plan = get_object_or_404(MembershipPlan, pk=pk, is_active=True)
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        if user.balance < plan.price:
+            messages.error(request, "Your balance is too low for this membership.")
+            return redirect("training:membership")
+        user.balance -= plan.price
+        user.save(update_fields=["balance"])
+        Membership.objects.filter(user=user, is_active=True).update(is_active=False)
+        starts_on = timezone.localdate()
+        Membership.objects.create(
+            user=user, plan=plan, title=plan.title,
+            sessions_total=plan.sessions_count,
+            sessions_remaining=plan.sessions_count,
+            price=plan.price, starts_on=starts_on,
+            expires_on=starts_on + timedelta(days=plan.duration_days),
+        )
+        BalanceTransaction.objects.create(
+            user=user, amount=-plan.price,
+            kind=BalanceTransaction.Kind.MEMBERSHIP,
+            description=f"Purchased {plan.title}",
+        )
+    messages.success(request, f"{plan.title} is now active.")
+    return redirect("training:membership")
+
+
 class TrainerSessionMixin(EditorMixin, UserPassesTestMixin):
     """Lets a trainer manage only sessions assigned to their profile."""
 
@@ -190,13 +293,13 @@ class SessionDelete(TrainerSessionMixin, SafeDelete):
 
 class TrainerCreate(AdminRequiredMixin, generic.CreateView):
     model = Trainer
-    fields = ("name", "bio", "experience_years", "specializations")
+    form_class = TrainerForm
     success_url = reverse_lazy("training:trainer-list")
 
 
 class TrainerUpdate(AdminRequiredMixin, generic.UpdateView):
     model = Trainer
-    fields = ("name", "bio", "experience_years", "specializations")
+    form_class = TrainerForm
     success_url = reverse_lazy("training:trainer-list")
 
 
@@ -243,15 +346,32 @@ def book(request: HttpRequest, pk: int) -> HttpResponse:
         # Acquire a SQLite write lock before checking capacity.
         TrainingSession.objects.filter(pk=pk).update(capacity=F("capacity"))
         session = get_object_or_404(TrainingSession, pk=pk)
-        if session.starts_at <= timezone.now():
+        if session.status == TrainingSession.Status.COMPLETED:
+            messages.error(request, "This session has already been completed.")
+        elif session.starts_at <= timezone.now():
             messages.error(request, "This session has already started.")
         elif session.participants.filter(pk=request.user.pk).exists():
             messages.info(request, "You already booked this session.")
         elif session.participants.count() >= session.capacity:
             messages.error(request, "This session is full.")
         else:
-            session.participants.add(request.user)
-            messages.success(request, "Your place is reserved.")
+            membership = Membership.objects.select_for_update().filter(
+                user=request.user,
+                is_active=True,
+                starts_on__lte=timezone.localdate(),
+                expires_on__gte=timezone.localdate(),
+                sessions_remaining__gt=0,
+            ).order_by("expires_on", "pk").first()
+            if membership is None:
+                messages.error(request, "An active membership with sessions is required.")
+            else:
+                membership.sessions_remaining = F("sessions_remaining") - 1
+                membership.save(update_fields=["sessions_remaining"])
+                MembershipUsage.objects.create(
+                    membership=membership, session=session, user=request.user,
+                )
+                session.participants.add(request.user)
+                messages.success(request, "Your place is reserved.")
     return redirect(session)
 
 
@@ -259,6 +379,14 @@ def book(request: HttpRequest, pk: int) -> HttpResponse:
 @require_POST
 def cancel(request: HttpRequest, pk: int) -> HttpResponse:
     session = get_object_or_404(TrainingSession, pk=pk)
+    usage = MembershipUsage.objects.filter(
+        session=session, user=request.user,
+    ).select_related("membership").first()
     session.participants.remove(request.user)
+    if usage:
+        Membership.objects.filter(pk=usage.membership_id).update(
+            sessions_remaining=F("sessions_remaining") + 1,
+        )
+        usage.delete()
     messages.success(request, "Your booking was cancelled.")
     return redirect(session)

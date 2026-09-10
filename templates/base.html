@@ -17,7 +17,9 @@
       <a href="{% url 'training:trainer-list' %}">Trainers</a>
       <a href="{% url 'training:specialization-list' %}">Disciplines</a>
       {% if user.is_authenticated %}
-        {% if user.is_superuser %}<a href="{% url 'training:client-list' %}">Clients</a><a href="/admin/">Admin panel</a>{% endif %}
+        <a href="{% url 'training:membership' %}">My membership</a>
+        {% if user.role == "trainer" %}<a href="{% url 'training:trainer-earnings' %}">My earnings</a>{% endif %}
+        {% if user.is_superuser %}<a href="{% url 'training:client-list' %}">Clients</a><a href="{% url 'training:payout-list' %}">Payouts</a><a href="/admin/">Admin panel</a>{% endif %}
         <a href="{% url 'training:profile' %}">{{ user.username }} · Profile</a>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}<button class="secondary">Log out</button>

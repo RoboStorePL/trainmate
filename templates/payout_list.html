@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Payouts</h1><p class="muted">Use Manage to adjust an amount or change its payment status.</p>
+  <div class="cards">{% for accrual in accruals %}<article>
+    <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.trainer }}</h2>
+    <p>{{ accrual.session.title }} · {{ accrual.participant_count }} participants</p>
+    <p><strong>{{ accrual.amount }} PLN</strong></p>
+    <a href="/admin/training/salaryaccrual/{{ accrual.pk }}/change/">Manage payout</a>
+  </article>{% empty %}<p>No salary accruals yet.</p>{% endfor %}</div>
+{% endblock %}

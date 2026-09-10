@@ -15,6 +15,22 @@ registration, profile editing, search, pagination and an admin interface.
   trainer profiles, disciplines and every training session. The account must be
   created as a Django superuser: `python manage.py createsuperuser --username Mixon`.
 
+## Memberships and trainer payouts
+
+- Clients use the **My membership** page to view their PLN balance, add demo
+  funds and choose an active membership plan themselves. This is a learning
+  demo: no real card or bank payment is processed.
+- An administrator manages the available plans: price, number of sessions and
+  validity period. Purchasing a plan automatically activates a membership.
+- Booking a session consumes one available membership session; cancellation
+  returns it.
+- Each trainer has a configurable rate in PLN per participant (default:
+  **10.00 PLN**). When a session is marked **Completed**, TrainMate creates a
+  salary accrual: `participants × trainer rate`.
+- Trainers can review their accruals in **My earnings**. An administrator can
+  manually change an accrual amount or mark it Accrued, Ready for payout or
+  Paid from **Payouts** or the Django Admin panel.
+
 ## Local setup (Python 3.12+)
 
 ```bash

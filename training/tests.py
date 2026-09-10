@@ -5,7 +5,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Specialization, Trainer, TrainingSession
+from .models import (
+    BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
+    Specialization, Trainer, TrainingSession,
+)
 
 
 class TrainMateTests(TestCase):
@@ -20,6 +23,11 @@ class TrainMateTests(TestCase):
             specialization=cls.discipline, capacity=1,
             starts_at=timezone.now() + timedelta(days=1),
             location="Studio",
+        )
+        cls.membership = Membership.objects.create(
+            user=cls.user, title="Test membership", sessions_total=5,
+            sessions_remaining=5, price=100,
+            expires_on=timezone.localdate() + timedelta(days=30),
         )
 
     def setUp(self) -> None:
@@ -40,8 +48,12 @@ class TrainMateTests(TestCase):
         self.client.post(url)
         self.client.post(url)
         self.assertEqual(self.session.participants.count(), 1)
+        self.membership.refresh_from_db()
+        self.assertEqual(self.membership.sessions_remaining, 4)
         self.client.post(reverse("training:cancel", args=[self.session.pk]))
         self.assertEqual(self.session.participants.count(), 0)
+        self.membership.refresh_from_db()
+        self.assertEqual(self.membership.sessions_remaining, 5)
 
     def test_full_session(self) -> None:
         other = get_user_model().objects.create_user(username="other")
@@ -90,6 +102,53 @@ class TrainMateTests(TestCase):
         self.client.force_login(admin)
         self.assertEqual(self.client.get(reverse("training:trainer-create")).status_code, 200)
         self.assertEqual(self.client.get(reverse("training:specialization-create")).status_code, 200)
+
+    def test_admin_can_link_only_trainer_user_to_profile(self) -> None:
+        trainer_user = get_user_model().objects.create_user(
+            username="new_trainer", role="trainer",
+        )
+        client_user = get_user_model().objects.create_user(username="new_client")
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.get(reverse("training:trainer-create"))
+        self.assertContains(response, "new_trainer")
+        self.assertNotContains(response, "new_client")
+        response = self.client.post(
+            reverse("training:trainer-create"),
+            {"user": trainer_user.pk, "name": "New trainer", "bio": "",
+             "experience_years": 1, "rate_per_participant": "10.00",
+             "specializations": [self.discipline.pk]},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Trainer.objects.filter(user=trainer_user).exists())
+
+    def test_completed_session_creates_salary_accrual(self) -> None:
+        self.session.participants.add(self.user)
+        self.session.status = TrainingSession.Status.COMPLETED
+        self.session.save()
+        accrual = SalaryAccrual.objects.get(session=self.session)
+        self.assertEqual(accrual.participant_count, 1)
+        self.assertEqual(accrual.amount, 10)
+
+    def test_demo_balance_can_purchase_membership(self) -> None:
+        plan = MembershipPlan.objects.create(
+            title="Yoga starter", sessions_count=4, duration_days=30, price=40,
+        )
+        response = self.client.post(reverse("training:add-balance"), {"amount": "50"})
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 50)
+        response = self.client.post(
+            reverse("training:purchase-membership", args=[plan.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 10)
+        purchased = Membership.objects.get(user=self.user, plan=plan)
+        self.assertEqual(purchased.sessions_remaining, 4)
+        self.assertEqual(BalanceTransaction.objects.filter(user=self.user).count(), 2)
 
     def test_only_superuser_can_view_clients(self) -> None:
         self.assertEqual(self.client.get(reverse("training:client-list")).status_code, 403)

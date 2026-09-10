@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row"><h1>My membership</h1><span class="tag">DEMO PAYMENTS</span></div>
+  <article class="detail"><h2>Balance: {{ user.balance }} PLN</h2>
+    <p>Use this demo balance to purchase a membership. No real card is charged.</p>
+    <form class="inline-form" method="post" action="{% url 'training:add-balance' %}">{% csrf_token %}
+      <label for="amount">Add demo funds (PLN)</label><input id="amount" name="amount" type="number" min="0.01" max="10000" step="0.01" required><button>Add funds</button>
+    </form>
+  </article>
+
+  <h2>Choose a membership</h2><div class="cards">
+    {% for plan in plans %}<article><span class="tag">{{ plan.sessions_count }} SESSIONS</span><h2>{{ plan.title }}</h2>
+      <p>{{ plan.description }}</p><p>{{ plan.duration_days }} days</p><p><strong>{{ plan.price }} PLN</strong></p>
+      <form method="post" action="{% url 'training:purchase-membership' plan.pk %}">{% csrf_token %}<button>Buy membership</button></form>
+    </article>{% empty %}<p>No membership plans are currently available.</p>{% endfor %}
+  </div>
+
+  <h2>My memberships</h2><div class="cards">
+    {% for membership in memberships %}<article><span class="tag">{% if membership.is_active %}ACTIVE{% else %}PAST{% endif %}</span>
+      <h2>{{ membership.title }}</h2><p><strong>{{ membership.sessions_remaining }}</strong> / {{ membership.sessions_total }} sessions remaining</p>
+      <p>Valid: {{ membership.starts_on }} – {{ membership.expires_on }}</p><p>{{ membership.price }} PLN</p>
+    </article>{% empty %}<p>You have not purchased a membership yet.</p>{% endfor %}
+  </div>
+
+  <h2>Recent balance activity</h2><div class="cards">
+    {% for transaction in transactions %}<article><span class="tag">{{ transaction.get_kind_display }}</span><h3>{{ transaction.amount }} PLN</h3><p>{{ transaction.description }}</p><p>{{ transaction.created_at|date:"d M Y, H:i" }}</p></article>
+    {% empty %}<p>No balance activity yet.</p>{% endfor %}
+  </div>
+{% endblock %}
