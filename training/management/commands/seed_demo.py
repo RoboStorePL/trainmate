@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -9,7 +10,7 @@ from training.models import Specialization, Trainer, TrainingSession
 class Command(BaseCommand):
     help = "Create sample disciplines, coaches and upcoming sessions."
 
-    def handle(self, *args, **options):
+    def handle(self, *args: Any, **options: Any) -> None:
         for index, name in enumerate(["Fitness", "Rehabilitation", "Jiu-jitsu", "Yoga"]):
             discipline, _ = Specialization.objects.get_or_create(
                 name=name, defaults={"description": f"Explore guided {name.lower()} sessions."},
@@ -28,4 +29,3 @@ class Command(BaseCommand):
                 },
             )
         self.stdout.write(self.style.SUCCESS("Demo sessions ready."))
-

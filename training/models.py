@@ -19,7 +19,7 @@ class User(AbstractUser):
                  ("advanced", "Advanced")],
     )
 
-    def get_absolute_url(self):
+    def get_absolute_url(self) -> str:
         return reverse("training:profile")
 
 
@@ -30,7 +30,7 @@ class Specialization(models.Model):
     class Meta:
         ordering = ["name"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -49,7 +49,7 @@ class Trainer(models.Model):
     class Meta:
         ordering = ["name", "pk"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -75,13 +75,13 @@ class TrainingSession(models.Model):
     class Meta:
         ordering = ["starts_at", "pk"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.title
 
-    def get_absolute_url(self):
+    def get_absolute_url(self) -> str:
         return reverse("training:session-detail", args=[self.pk])
 
-    def clean(self):
+    def clean(self) -> None:
         if self.starts_at and self.starts_at <= timezone.now():
             raise ValidationError({"starts_at": "Choose a future time."})
         if self.pk and self.capacity < self.participants.count():

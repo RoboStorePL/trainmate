@@ -1,10 +1,13 @@
 from django.contrib import messages
+from typing import Any
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, QuerySet
+from django.http import HttpRequest, HttpResponse
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -16,12 +19,12 @@ from .forms import ProfileForm, SessionForm, SignUpForm, TrainerSessionForm
 from .models import Specialization, Trainer, TrainingSession, User
 
 
-def is_trainer(user):
+def is_trainer(user: User) -> bool:
     return user.role == User.Role.TRAINER and hasattr(user, "trainer_profile")
 
 
 @login_required
-def home(request):
+def home(request: HttpRequest) -> HttpResponse:
     visits = request.session.get("num_visits", 0)
     request.session["num_visits"] = visits + 1
     return render(request, "home.html", {
@@ -40,12 +43,12 @@ class SearchList(LoginRequiredMixin, generic.ListView):
     paginate_by = 5
     search_field = "name"
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet[Any]:
         queryset = super().get_queryset()
         query = self.request.GET.get("q", "").strip()
         return queryset.filter(**{f"{self.search_field}__icontains": query})
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         params = self.request.GET.copy()
         params.pop("page", None)
@@ -89,7 +92,7 @@ class SessionDetail(LoginRequiredMixin, generic.DetailView):
         "trainer", "specialization",
     ).prefetch_related("participants")
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context["can_manage_session"] = (
             self.request.user.is_superuser
@@ -103,7 +106,7 @@ class EditorMixin(LoginRequiredMixin):
 
 
 class AdminRequiredMixin(EditorMixin, UserPassesTestMixin):
-    def test_func(self):
+    def test_func(self) -> bool:
         return self.request.user.is_superuser
 
 
@@ -113,13 +116,13 @@ class ClientList(AdminRequiredMixin, generic.ListView):
     context_object_name = "clients"
     paginate_by = 10
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet[User]:
         query = self.request.GET.get("q", "").strip()
         return User.objects.filter(
             role=User.Role.CLIENT, is_superuser=False, username__icontains=query,
         ).prefetch_related("training_sessions").order_by("username")
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context["query"] = self.request.GET.get("q", "")
         return context
@@ -130,27 +133,31 @@ class TrainerSessionMixin(EditorMixin, UserPassesTestMixin):
 
     trainer = None
 
-    def test_func(self):
+    def test_func(self) -> bool:
         return self.request.user.is_superuser or is_trainer(self.request.user)
 
-    def dispatch(self, request, *args, **kwargs):
+    def dispatch(
+        self, request: HttpRequest, *args: Any, **kwargs: Any,
+    ) -> HttpResponse:
         if not request.user.is_superuser:
             if not is_trainer(request.user):
                 raise PermissionDenied
             self.trainer = request.user.trainer_profile
         return super().dispatch(request, *args, **kwargs)
 
-    def get_form_class(self):
+    def get_form_class(self) -> type[SessionForm]:
         return SessionForm if self.request.user.is_superuser else TrainerSessionForm
 
-    def get_form(self, form_class=None):
+    def get_form(
+        self, form_class: type[SessionForm] | None = None,
+    ) -> SessionForm:
         form = super().get_form(form_class)
         if self.trainer:
             form.instance.trainer = self.trainer
             form.fields["specialization"].queryset = self.trainer.specializations.all()
         return form
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet[TrainingSession]:
         queryset = super().get_queryset()
         if self.request.user.is_superuser:
             return queryset
@@ -168,7 +175,7 @@ class SessionUpdate(TrainerSessionMixin, generic.UpdateView):
 class SafeDelete(LoginRequiredMixin, generic.DeleteView):
     template_name = "confirm_delete.html"
 
-    def form_valid(self, form):
+    def form_valid(self, form: Any) -> HttpResponse:
         try:
             return super().form_valid(form)
         except ProtectedError:
@@ -225,13 +232,13 @@ class Profile(EditorMixin, generic.UpdateView):
     form_class = ProfileForm
     success_url = reverse_lazy("training:profile")
 
-    def get_object(self, queryset=None):
+    def get_object(self, queryset: QuerySet[User] | None = None) -> User:
         return self.request.user
 
 
 @login_required
 @require_POST
-def book(request, pk):
+def book(request: HttpRequest, pk: int) -> HttpResponse:
     with transaction.atomic():
         # Acquire a SQLite write lock before checking capacity.
         TrainingSession.objects.filter(pk=pk).update(capacity=F("capacity"))
@@ -250,7 +257,7 @@ def book(request, pk):
 
 @login_required
 @require_POST
-def cancel(request, pk):
+def cancel(request: HttpRequest, pk: int) -> HttpResponse:
     session = get_object_or_404(TrainingSession, pk=pk)
     session.participants.remove(request.user)
     messages.success(request, "Your booking was cancelled.")
