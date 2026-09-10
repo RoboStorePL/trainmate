@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Delete {{ object }}?</h1>
+  <article><p>This entry will be removed. Deleting a session also removes its bookings.</p><form method="post">{% csrf_token %}<button>Confirm deletion</button><a class="cancel" href="/">Cancel</a></form></article>
+{% endblock %}
+

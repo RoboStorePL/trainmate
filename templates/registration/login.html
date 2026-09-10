@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+  <span class="tag">WELCOME BACK</span><h1>Your next chapter<br>starts with a move.</h1>
+  <article class="form-panel"><form method="post">{% csrf_token %}{{ form.as_p }}<input type="hidden" name="next" value="{{ next }}"><button>Log in ↗</button></form><p>New here? <a href="{% url 'training:signup' %}">Create an account</a></p></article>
+{% endblock %}
+

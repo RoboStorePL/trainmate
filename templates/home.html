@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <div><span class="tag">EVERY BODY. EVERY BEGINNING.</span>
+      <h1>Find your rhythm.<br><em>Move together.</em></h1>
+      <p>From your first yoga flow to your next challenge on the mat.<br>Find a coach, choose a session, make time for yourself.</p>
+      <a class="button" href="{% url 'training:session-list' %}">Explore sessions ↗</a>
+    </div>
+    <div class="hero-art"><span>MOVE</span><span>REST</span><span>REPEAT</span></div>
+  </section>
+  <div class="stats">
+    <article><strong>{{ session_count }}</strong><span>Training sessions</span></article>
+    <article><strong>{{ trainer_count }}</strong><span>Coaches to guide you</span></article>
+    <article><strong>{{ member_count }}</strong><span>Community members</span></article>
+  </div>
+  <h2>Up next</h2>
+  <div class="cards">
+    {% for session in sessions %}
+      <article><span class="tag">{{ session.specialization }}</span><h3><a href="{{ session.get_absolute_url }}">{{ session.title }}</a></h3><p>{{ session.trainer }} · {{ session.duration_minutes }} min</p><p>{{ session.starts_at|date:"D, d M · H:i" }}</p></article>
+    {% empty %}<p>New sessions are on their way. Create the first one.</p>{% endfor %}
+  </div>
+  <p class="muted">Previous visits to your dashboard: {{ num_visits }}</p>
+{% endblock %}
+

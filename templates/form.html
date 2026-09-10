@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>{% if object %}Update {{ object }}{% else %}Let's get started{% endif %}</h1>
+  <article class="form-panel"><form method="post">{% csrf_token %}{{ form.as_p }}<button>Save changes</button><a class="cancel" href="/">Back to overview</a></form></article>
+{% endblock %}
+

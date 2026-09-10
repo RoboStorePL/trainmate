@@ -1,0 +1,46 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrainMate · Find your rhythm</title>
+  <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+  <aside>
+    <a class="brand" href="/">Train<span>Mate</span></a>
+    <p class="muted">MAKE MOVEMENT A HABIT</p>
+    <nav>
+      <a href="/">Overview</a>
+      <a href="{% url 'training:session-list' %}">Training sessions</a>
+      <a href="{% url 'training:trainer-list' %}">Trainers</a>
+      <a href="{% url 'training:specialization-list' %}">Disciplines</a>
+      {% if user.is_authenticated %}
+        {% if user.is_superuser %}<a href="{% url 'training:client-list' %}">Clients</a><a href="/admin/">Admin panel</a>{% endif %}
+        <a href="{% url 'training:profile' %}">{{ user.username }} · Profile</a>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}<button class="secondary">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+        <a href="{% url 'training:signup' %}">Create account</a>
+      {% endif %}
+    </nav>
+    <p class="aside-note">A little movement.<br>A better every day.</p>
+  </aside>
+  <main>
+    <header><span>YOUR SPACE TO MOVE</span><span>Fitness / Recovery / Jiu-jitsu / Yoga</span></header>
+    {% for message in messages %}<div class="notice">{{ message }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+    {% if is_paginated %}
+      <div class="pagination">
+        {% if page_obj.has_previous %}<a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">← Previous</a>{% endif %}
+        <span>{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+      </div>
+    {% endif %}
+    <footer>TrainMate · Find your rhythm, together.</footer>
+  </main>
+</body>
+</html>

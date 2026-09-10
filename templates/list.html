@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row"><h1>{{ title }}</h1>{% if can_manage_catalog or kind == "session" and can_create_session %}<a class="button" href="{% url 'training:'|add:kind|add:'-create' %}">+ Create</a>{% endif %}</div>
+  <form class="search" method="get"><label for="search">Find your next connection</label><div><input id="search" name="q" value="{{ query }}" placeholder="Search by name…"><button>Search</button></div></form>
+  <div class="cards">
+    {% for item in object_list %}
+      <article>
+        {% if kind == "session" %}<span class="tag">{{ item.specialization }}</span>{% endif %}
+        <h2>{% if kind == "session" %}<a href="{{ item.get_absolute_url }}">{{ item }}</a>{% else %}{{ item }}{% endif %}</h2>
+        {% if kind == "session" %}<p>{{ item.trainer }} · {{ item.starts_at|date:"d M, H:i" }}</p><p>{{ item.location }}</p>{% endif %}
+        {% if kind == "trainer" %}<p>{{ item.bio|truncatewords:25 }}</p><p>{{ item.experience_years }} years of experience</p>{% endif %}
+        {% if kind == "specialization" %}<p>{{ item.description }}</p>{% endif %}
+        {% if can_manage_catalog or kind == "session" and item.trainer.user_id == user.pk %}<div class="actions"><a href="{% url 'training:'|add:kind|add:'-update' item.pk %}">Edit</a><a href="{% url 'training:'|add:kind|add:'-delete' item.pk %}">Delete</a></div>{% endif %}
+      </article>
+    {% empty %}<p>No matches. Try another search or create a new entry.</p>{% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+  <span class="tag">{{ object.specialization }}</span>
+  <h1>{{ object.title }}</h1>
+  <article class="detail"><p>{{ object.description }}</p><h3>{{ object.trainer }}</h3><p>{{ object.starts_at }} · {{ object.duration_minutes }} minutes</p><p>{{ object.location }}</p><p>{{ object.participants.count }} / {{ object.capacity }} places booked</p>
+    {% if user in object.participants.all %}
+      <form method="post" action="{% url 'training:cancel' object.pk %}">{% csrf_token %}<button>Cancel my booking</button></form>
+    {% else %}
+      <form method="post" action="{% url 'training:book' object.pk %}">{% csrf_token %}<button>Book my place ↗</button></form>
+    {% endif %}
+    {% if can_manage_session %}<div class="actions"><a href="{% url 'training:session-update' object.pk %}">Edit session</a><a href="{% url 'training:session-delete' object.pk %}">Delete session</a></div>{% endif %}
+  </article>
+{% endblock %}
