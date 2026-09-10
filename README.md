@@ -6,14 +6,14 @@ registration, profile editing, search, pagination and an admin interface.
 
 ## Roles and access
 
-- **Mixon** is the only site administrator and must be created as a Django
-  superuser: `python manage.py createsuperuser --username Mixon`.
-- **Clients** can browse, search, book sessions, cancel their own bookings and
-  edit their own profile.
-- **Trainers** have a linked Trainer profile and can create, edit and delete
-  only their own sessions.
-- Only Mixon can manage trainer profiles and disciplines, or manage every
-  training session. Create and link trainer profiles in `/admin/`.
+- **Client** — can browse and search sessions, book a place, cancel their own
+  booking and edit their own profile.
+- **Trainer** — has a linked Trainer profile and can create, edit and delete
+  only their own training sessions.
+- **Admin** — Mixon is the only administrator. The admin has access to the
+  **Admin panel** directly from the TrainMate website and can manage clients,
+  trainer profiles, disciplines and every training session. The account must be
+  created as a Django superuser: `python manage.py createsuperuser --username Mixon`.
 
 ## Local setup (Python 3.12+)
 
