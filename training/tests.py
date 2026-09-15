@@ -1,12 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
+import json
+from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core import mail
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
@@ -14,7 +16,7 @@ from django.utils.http import urlsafe_base64_encode
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
-    Specialization, Trainer, TrainingSession,
+    Specialization, Trainer, TrainingSession, VisionAnalysis, VisionDevice,
 )
 
 
@@ -42,12 +44,85 @@ class TrainMateTests(TestCase):
 
     def test_pages_render(self) -> None:
         names = ["home", "session-list", "trainer-list", "specialization-list",
-                 "profile"]
+                 "profile", "vision-dashboard"]
         for name in names:
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(
                     reverse(f"training:{name}"),
                 ).status_code, 200)
+
+    def test_vision_device_can_submit_pose_result_for_its_owner(self) -> None:
+        device = VisionDevice(name="test-pi", owner=self.user)
+        device.set_token("test-device-token")
+        device.save()
+
+        response = self.client.post(
+            reverse("training:vision-ingest"),
+            data=json.dumps({
+                "activity": "yoga", "pose_score": 88.5,
+                "feedback": "Pose captured clearly.",
+                "landmarks": {"left_shoulder": {"visibility": 0.9}},
+            }),
+            content_type="application/json",
+            headers={"Authorization": "Bearer test-device-token"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        analysis = VisionAnalysis.objects.get(device=device)
+        self.assertEqual(analysis.user, self.user)
+        self.assertEqual(analysis.pose_score, Decimal("88.50"))
+        self.assertIsNotNone(VisionDevice.objects.get(pk=device.pk).last_seen_at)
+
+    def test_vision_endpoint_rejects_an_invalid_token(self) -> None:
+        response = self.client.post(
+            reverse("training:vision-ingest"), data="{}",
+            content_type="application/json",
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_vision_owner_can_view_a_short_lived_live_frame(self) -> None:
+        device = VisionDevice(name="live-pi", owner=self.user)
+        device.set_token("live-device-token")
+        device.save()
+        frame = b"\xff\xd8test-jpeg-frame\xff\xd9"
+
+        upload = self.client.post(
+            reverse("training:vision-live-ingest"), data=frame,
+            content_type="image/jpeg",
+            headers={"Authorization": "Bearer live-device-token"},
+        )
+
+        self.assertEqual(upload.status_code, 204)
+        preview = self.client.get(
+            reverse("training:vision-live-frame", args=[device.pk]),
+        )
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.content, frame)
+        self.assertEqual(preview["Cache-Control"], "no-store, max-age=0")
+
+    def test_vision_device_can_attach_one_progress_snapshot(self) -> None:
+        device = VisionDevice(name="snapshot-pi", owner=self.user)
+        device.set_token("snapshot-device-token")
+        device.save()
+        analysis = VisionAnalysis.objects.create(
+            user=self.user, device=device, activity=VisionAnalysis.Activity.YOGA,
+            pose_score=Decimal("90.00"),
+        )
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            upload = self.client.post(
+                reverse("training:vision-snapshot", args=[analysis.pk]),
+                data=b"\xff\xd8saved-frame\xff\xd9", content_type="image/jpeg",
+                headers={"Authorization": "Bearer snapshot-device-token"},
+            )
+            self.assertEqual(upload.status_code, 201)
+            analysis.refresh_from_db()
+            self.assertTrue(analysis.snapshot.name)
+            snapshot = self.client.get(
+                reverse("training:vision-snapshot-view", args=[analysis.pk]),
+            )
+            self.assertEqual(snapshot.status_code, 200)
+            self.assertEqual(b"".join(snapshot.streaming_content), b"\xff\xd8saved-frame\xff\xd9")
 
     def test_booking_and_cancellation(self) -> None:
         url = reverse("training:book", args=[self.session.pk])

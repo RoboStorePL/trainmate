@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row">
+    <div>
+      <span class="tag">RASPBERRY PI · ON-DEVICE ANALYSIS</span>
+      <h1>Vision Lab</h1>
+    </div>
+  </div>
+  <p class="muted vision-intro">Live video is visible only while your device is connected. TrainMate saves one optional progress frame and pose result per minute — never a continuous recording.</p>
+
+  <div class="stats">
+    <article><strong>{{ analyses|length }}</strong><span>Recent analyses</span></article>
+    <article><strong>{{ devices|length }}</strong><span>Connected Pi devices</span></article>
+  </div>
+
+  {% if primary_device %}
+    <section class="vision-live-panel">
+      <div class="vision-live-copy">
+        <span class="tag">LIVE · PRIVATE TO YOU</span>
+        <h2>{{ primary_device.name }} camera</h2>
+        <p class="muted">The annotated frame refreshes while your Pi is running. The video is held only in temporary server memory and expires after a few seconds.</p>
+        <p class="vision-status" id="vision-status">Waiting for a frame from your Pi…</p>
+      </div>
+      <div class="vision-live-frame">
+        <img id="vision-live-image" data-url="{% url 'training:vision-live-frame' primary_device.pk %}" alt="Live movement analysis from {{ primary_device.name }}" hidden>
+        <p id="vision-live-placeholder">Start <code>vision_agent.py</code> on the Raspberry Pi to see live video.</p>
+      </div>
+    </section>
+  {% else %}
+    <article class="vision-empty">
+      <h2>Connect your Raspberry Pi</h2>
+      <p>An administrator needs to register a Pi device and assign it to your account. The device token stays on the Pi and is never shown in this page.</p>
+    </article>
+  {% endif %}
+
+  {% if progress_analyses %}
+    <section class="vision-progress">
+      <span class="tag">YOUR TREND</span>
+      <h2>Pose visibility over time</h2>
+      <div class="progress-bars" aria-label="Pose visibility trend">
+        {% for analysis in progress_analyses %}
+          <div class="progress-bar-item" title="{{ analysis.captured_at|date:'d M H:i' }} — {{ analysis.pose_score }}%">
+            <span style="height: {% widthratio analysis.pose_score 1 1 %}%"></span>
+          </div>
+        {% endfor %}
+      </div>
+      {% with latest_analysis=progress_analyses|last %}
+        <div class="progress-labels"><span>{{ progress_analyses.0.captured_at|date:"d M" }}</span><span>{{ latest_analysis.captured_at|date:"d M" }}</span></div>
+      {% endwith %}
+    </section>
+  {% endif %}
+
+  <h2>Recent movement checks</h2>
+  <div class="cards">
+    {% for analysis in analyses %}
+      <article>
+        {% if analysis.snapshot %}
+          <img class="vision-snapshot" src="{% url 'training:vision-snapshot-view' analysis.pk %}" alt="Saved {{ analysis.get_activity_display }} progress frame from {{ analysis.captured_at|date:'d M Y, H:i' }}">
+        {% endif %}
+        <span class="tag">{{ analysis.get_activity_display }}</span>
+        <h3>{{ analysis.pose_score|default:"—" }}{% if analysis.pose_score is not None %}%{% endif %} pose score</h3>
+        <p>{{ analysis.feedback|default:"Pose landmarks received from your Pi." }}</p>
+        <p class="muted">{{ analysis.device.name }} · {{ analysis.captured_at|date:"d M Y, H:i" }}</p>
+      </article>
+    {% empty %}
+      <article class="vision-empty">
+        <h3>No movement checks yet</h3>
+        <p>Once the Raspberry Pi agent sends its first pose result, it will appear here.</p>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if primary_device %}
+    <script>
+      (() => {
+        const image = document.getElementById("vision-live-image");
+        const placeholder = document.getElementById("vision-live-placeholder");
+        const status = document.getElementById("vision-status");
+        const refresh = () => {
+          const probe = new Image();
+          probe.onload = () => {
+            image.src = `${image.dataset.url}?t=${Date.now()}`;
+            image.hidden = false;
+            placeholder.hidden = true;
+            status.textContent = "Live camera connected";
+          };
+          probe.onerror = () => {
+            image.hidden = true;
+            placeholder.hidden = false;
+            status.textContent = "Waiting for a frame from your Pi…";
+          };
+          probe.src = `${image.dataset.url}?t=${Date.now()}`;
+        };
+        refresh();
+        window.setInterval(refresh, 1000);
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

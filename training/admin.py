@@ -5,6 +5,7 @@ from django.http import HttpRequest
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
     SalaryAccrual, Specialization, Trainer, TrainingSession, User,
+    VisionAnalysis, VisionDevice,
 )
 
 
@@ -73,3 +74,23 @@ class SalaryAccrualAdmin(admin.ModelAdmin):
 
 
 admin.site.register([MembershipUsage, Specialization, TrainingSession])
+
+
+@admin.register(VisionDevice)
+class VisionDeviceAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "is_active", "last_seen_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "owner__username")
+    readonly_fields = ("token_hash", "last_seen_at", "created_at")
+
+
+@admin.register(VisionAnalysis)
+class VisionAnalysisAdmin(admin.ModelAdmin):
+    list_display = ("user", "device", "activity", "pose_score", "has_snapshot", "captured_at")
+    list_filter = ("activity", "device")
+    search_fields = ("user__username", "device__name", "feedback")
+    readonly_fields = ("device", "user", "captured_at", "created_at")
+
+    @admin.display(boolean=True, description="Snapshot")
+    def has_snapshot(self, obj: VisionAnalysis) -> bool:
+        return bool(obj.snapshot)

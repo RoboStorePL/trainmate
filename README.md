@@ -53,6 +53,27 @@ python manage.py createsuperuser
 > **Demo payment notice:** balances and membership purchases are simulated for
 > learning purposes. TrainMate does not process real card or bank payments.
 
+## Vision Lab — Raspberry Pi 5 prototype
+
+TrainMate includes a privacy-first integration point for a Raspberry Pi 5 with
+Camera Module 3 Wide. The Pi agent performs pose detection on-device and sends
+an annotated, short-lived live preview to the device owner's **Vision Lab**.
+The preview expires from server memory after seconds; it is not a video
+recording. With the owner's consent, one annotated progress frame, a
+pose-visibility score and feedback are saved each minute so the client can
+follow their trend over time.
+
+The Pi agent lives in [raspberry_pi](raspberry_pi/). Register a device from the
+Django host to generate its one-time bearer token:
+
+```bash
+python manage.py create_vision_device --name mixon-pi --owner Mixon
+```
+
+See [raspberry_pi/README.md](raspberry_pi/README.md) for installation and local
+network setup. Use HTTPS, a private network or VPN, and rotate device tokens
+before any production deployment.
+
 ## Security
 
 - New accounts are inactive until the user confirms the activation link sent by
@@ -103,8 +124,9 @@ DEBUG=0 SECRET_KEY="a-long-unique-secret" ALLOWED_HOSTS="example.com" python man
 ## Database diagram
 
 The editable [draw.io database diagram](docs/database-diagram.drawio) covers
-users, trainer profiles, sessions, memberships, balance transactions and salary
-accruals. Open it with [diagrams.net](https://app.diagrams.net/) to edit it.
+users, trainer profiles, sessions, memberships, balance transactions, salary
+accruals and Raspberry Pi vision results. Open it with
+[diagrams.net](https://app.diagrams.net/) to edit it.
 
 ```mermaid
 erDiagram
@@ -119,6 +141,9 @@ erDiagram
     User ||--o{ BalanceTransaction : has
     Trainer ||--o{ SalaryAccrual : earns
     TrainingSession ||--|| SalaryAccrual : creates
+    User ||--o{ VisionDevice : owns
+    VisionDevice ||--o{ VisionAnalysis : submits
+    User ||--o{ VisionAnalysis : reviews
 ```
 
 ## Screenshots
@@ -132,6 +157,7 @@ dashboard and Django Admin will be added here before final submission.
 
 ## Project scope
 
-TrainMate is an educational portfolio project. AI camera analysis, real payment
-provider integration, CI/CD, Docker deployment, centralised logging and
-automated database backups are intentionally outside the current scope.
+TrainMate is an educational portfolio project. The Raspberry Pi Vision Lab is
+an on-device pose-analysis prototype. Real payment-provider integration, CI/CD,
+Docker deployment, centralised logging and automated database backups are
+intentionally outside the current scope.

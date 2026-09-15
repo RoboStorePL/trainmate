@@ -153,6 +153,22 @@ tbody tr:last-child td { border-bottom: 0; }
 .status-paid { background: #d9eaf3; color: #285c76; }
 .table-action { display: inline-block; padding: 7px 12px; border: 1px solid #76916e; border-radius: 7px; color: #365c3b; font-size: 13px; font-weight: 700; }
 .table-action:hover { background: #e9f0e4; text-decoration: none; }
+.vision-intro { max-width: 760px; margin-bottom: 28px; }
+.vision-empty { max-width: 720px; }
+.vision-live-panel { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(360px, 1.3fr); gap: 24px; margin: 30px 0; padding: 24px; border: 1px solid #d9dfd3; border-radius: 16px; background: #e6ecdd; }
+.vision-live-panel h2 { margin: 6px 0; }
+.vision-status { color: #456b4c; font-weight: 700; }
+.vision-live-frame { display: grid; min-height: 280px; place-items: center; overflow: hidden; border-radius: 12px; background: #243b30; color: #e8eedf; }
+.vision-live-frame img { width: 100%; height: 100%; max-height: 500px; object-fit: contain; }
+.vision-live-frame p { max-width: 280px; padding: 24px; text-align: center; }
+.vision-live-frame code { font-size: 12px; }
+.vision-progress { margin: 34px 0; padding: 24px; border: 1px solid #e0e3d9; border-radius: 16px; background: #fffefa; }
+.vision-progress h2 { margin: 4px 0 20px; }
+.progress-bars { display: flex; height: 150px; align-items: end; gap: 7px; padding: 0 4px; border-bottom: 1px solid #cdd6c7; }
+.progress-bar-item { display: flex; height: 100%; flex: 1; min-width: 8px; align-items: end; }
+.progress-bar-item span { width: 100%; min-height: 4px; border-radius: 5px 5px 0 0; background: #6f965d; }
+.progress-labels { display: flex; justify-content: space-between; margin-top: 6px; color: #6d796e; font-size: 12px; }
+.vision-snapshot { width: 100%; aspect-ratio: 16 / 9; margin-bottom: 16px; border-radius: 9px; object-fit: cover; background: #e8ece3; }
 
 @media (max-width: 800px) {
   aside { position: static; width: auto; height: auto; padding: 20px; }
@@ -162,4 +178,5 @@ tbody tr:last-child td { border-bottom: 0; }
   header span:last-child { display: none; }
   .hero { padding: 24px; }
   .title-row h1 { font-size: 30px; }
+  .vision-live-panel { grid-template-columns: 1fr; }
 }
