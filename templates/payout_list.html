@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-  <h1>Payouts</h1><p class="muted">Use Manage to adjust an amount or change its payment status.</p>
-  <div class="cards">{% for accrual in accruals %}<article>
-    <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.trainer }}</h2>
-    <p>{{ accrual.session.title }} · {{ accrual.participant_count }} participants</p>
-    <p><strong>{{ accrual.amount }} PLN</strong></p>
-    <a href="/admin/training/salaryaccrual/{{ accrual.pk }}/change/">Manage payout</a>
-  </article>{% empty %}<p>No salary accruals yet.</p>{% endfor %}</div>
+  <h1>Trainer salaries</h1>
+  <p class="muted">On hold is created when a client books. Completed sessions become Confirmed. Use Manage to edit an amount or mark it Paid.</p>
+  <div class="table-wrap salary-table"><table>
+    <thead><tr><th>Trainer</th><th>Session</th><th>Participants</th><th>Rate</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody>{% for accrual in accruals %}<tr>
+      <td><strong>{{ accrual.trainer }}</strong></td><td>{{ accrual.session.title }}</td><td class="number">{{ accrual.participant_count }}</td>
+      <td class="money">{{ accrual.rate_per_participant }} PLN</td><td class="money"><strong>{{ accrual.amount }} PLN</strong></td>
+      <td><span class="status status-{{ accrual.status }}">{{ accrual.get_status_display }}</span></td><td><a class="table-action" href="/admin/training/salaryaccrual/{{ accrual.pk }}/change/">Manage</a></td>
+    </tr>{% empty %}<tr><td colspan="7">No salary accruals yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
 {% endblock %}

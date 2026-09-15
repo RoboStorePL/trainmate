@@ -52,6 +52,9 @@ python manage.py check
 
 ## Database diagram
 
+The editable [draw.io database diagram](docs/database-diagram.drawio) contains
+all current membership, payment and salary entities.
+
 ```mermaid
 erDiagram
     User }o--o{ TrainingSession : participates

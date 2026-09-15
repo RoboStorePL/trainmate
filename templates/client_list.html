@@ -3,11 +3,12 @@
   <div class="title-row"><h1>Clients</h1><a class="button" href="/admin/training/user/add/">+ Add user</a></div>
   <form class="search" method="get"><label for="search">Find a client by login</label><div><input id="search" name="q" value="{{ query }}" placeholder="Search by username…"><button>Search</button></div></form>
   <div class="table-wrap"><table>
-    <thead><tr><th>Login</th><th>Name</th><th>Fitness level</th><th>Bookings</th><th>Account</th></tr></thead>
+    <thead><tr><th>Login</th><th>Name</th><th>Fitness level</th><th>Bookings</th><th>Balance</th><th>Account</th></tr></thead>
     <tbody>{% for client in clients %}<tr>
       <td>{{ client.username }}</td><td>{{ client.get_full_name|default:"—" }}</td>
       <td>{{ client.get_fitness_level_display }}</td><td>{{ client.training_sessions.count }}</td>
-      <td><a href="/admin/training/user/{{ client.pk }}/change/">Manage</a></td>
-    </tr>{% empty %}<tr><td colspan="5">No clients found.</td></tr>{% endfor %}</tbody>
+      <td>{{ client.balance }} PLN</td>
+      <td><a href="{% url 'training:adjust-client-balance' client.pk %}">Adjust balance</a> · <a href="/admin/training/user/{{ client.pk }}/change/">Manage</a></td>
+    </tr>{% empty %}<tr><td colspan="6">No clients found.</td></tr>{% endfor %}</tbody>
   </table></div>
 {% endblock %}

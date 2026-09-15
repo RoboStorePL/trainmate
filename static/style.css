@@ -138,6 +138,22 @@ footer { padding-top: 40px; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
 .inline-form label { grid-column: 1 / -1; }
 
+.table-wrap { overflow-x: auto; border: 1px solid #d9dfd3; border-radius: 16px; background: #fffefa; box-shadow: 0 8px 24px rgb(33 54 43 / 6%); }
+table { width: 100%; min-width: 820px; border-collapse: collapse; text-align: left; }
+th, td { padding: 18px 20px; border-bottom: 1px solid #e5e9e1; }
+th { background: #eef2e7; color: #596d5a; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; }
+tbody tr { transition: background 160ms ease; }
+tbody tr:hover { background: #f7f9f3; }
+tbody tr:last-child td { border-bottom: 0; }
+.number { text-align: center; font-weight: 700; }
+.money { white-space: nowrap; }
+.status { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; letter-spacing: .4px; white-space: nowrap; }
+.status-accrued { background: #f7ead0; color: #825f20; }
+.status-ready { background: #dcebd3; color: #3f6a32; }
+.status-paid { background: #d9eaf3; color: #285c76; }
+.table-action { display: inline-block; padding: 7px 12px; border: 1px solid #76916e; border-radius: 7px; color: #365c3b; font-size: 13px; font-weight: 700; }
+.table-action:hover { background: #e9f0e4; text-decoration: none; }
+
 @media (max-width: 800px) {
   aside { position: static; width: auto; height: auto; padding: 20px; }
   nav { display: flex; flex-wrap: wrap; margin-top: 16px; }

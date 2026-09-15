@@ -116,15 +116,26 @@ class TrainingSession(models.Model):
         super().save(*args, **kwargs)
         if self.status == self.Status.COMPLETED:
             participant_count = self.participants.count()
-            SalaryAccrual.objects.get_or_create(
+            if participant_count == 0:
+                return
+            accrual, created = SalaryAccrual.objects.get_or_create(
                 session=self,
                 defaults={
                     "trainer": self.trainer,
                     "participant_count": participant_count,
                     "rate_per_participant": self.trainer.rate_per_participant,
                     "amount": participant_count * self.trainer.rate_per_participant,
+                    "status": SalaryAccrual.Status.READY,
                 },
             )
+            if not created and accrual.status == SalaryAccrual.Status.ACCRUED:
+                accrual.participant_count = participant_count
+                accrual.rate_per_participant = self.trainer.rate_per_participant
+                accrual.amount = participant_count * self.trainer.rate_per_participant
+                accrual.status = SalaryAccrual.Status.READY
+                accrual.save(update_fields=[
+                    "participant_count", "rate_per_participant", "amount", "status",
+                ])
 
 
 class MembershipPlan(models.Model):
@@ -216,10 +227,40 @@ class SalaryAccrual(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACCRUED)
     admin_note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at", "-pk"]
 
     def __str__(self) -> str:
         return f"{self.trainer}: {self.amount} PLN"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Keep the payout lifecycle one-way and retain its key timestamps."""
+        previous_status = None
+        if self.pk:
+            previous_status = type(self).objects.filter(pk=self.pk).values_list(
+                "status", flat=True,
+            ).first()
+
+        allowed_transitions = {
+            self.Status.ACCRUED: {self.Status.ACCRUED, self.Status.READY},
+            self.Status.READY: {self.Status.READY, self.Status.PAID},
+            self.Status.PAID: {self.Status.PAID},
+        }
+        if previous_status and self.status not in allowed_transitions[previous_status]:
+            raise ValidationError("A salary payout status cannot be reversed or skipped.")
+
+        now = timezone.now()
+        timestamp_fields: set[str] = {"updated_at"}
+        if self.status == self.Status.READY and self.confirmed_at is None:
+            self.confirmed_at = now
+            timestamp_fields.add("confirmed_at")
+        if self.status == self.Status.PAID and self.paid_at is None:
+            self.paid_at = now
+            timestamp_fields.add("paid_at")
+        if update_fields := kwargs.get("update_fields"):
+            kwargs["update_fields"] = set(update_fields) | timestamp_fields
+        super().save(*args, **kwargs)

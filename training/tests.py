@@ -1,9 +1,16 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError
+from django.core import mail
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
@@ -50,10 +57,14 @@ class TrainMateTests(TestCase):
         self.assertEqual(self.session.participants.count(), 1)
         self.membership.refresh_from_db()
         self.assertEqual(self.membership.sessions_remaining, 4)
+        accrual = SalaryAccrual.objects.get(session=self.session)
+        self.assertEqual(accrual.status, SalaryAccrual.Status.ACCRUED)
+        self.assertEqual(accrual.amount, 10)
         self.client.post(reverse("training:cancel", args=[self.session.pk]))
         self.assertEqual(self.session.participants.count(), 0)
         self.membership.refresh_from_db()
         self.assertEqual(self.membership.sessions_remaining, 5)
+        self.assertFalse(SalaryAccrual.objects.filter(session=self.session).exists())
 
     def test_full_session(self) -> None:
         other = get_user_model().objects.create_user(username="other")
@@ -131,6 +142,182 @@ class TrainMateTests(TestCase):
         accrual = SalaryAccrual.objects.get(session=self.session)
         self.assertEqual(accrual.participant_count, 1)
         self.assertEqual(accrual.amount, 10)
+        self.assertEqual(accrual.status, SalaryAccrual.Status.READY)
+
+    def test_only_admin_can_confirm_session_and_salary(self) -> None:
+        self.client.post(reverse("training:book", args=[self.session.pk]))
+        self.assertEqual(
+            self.client.post(
+                reverse("training:session-complete", args=[self.session.pk]),
+            ).status_code,
+            403,
+        )
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("training:session-complete", args=[self.session.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, TrainingSession.Status.COMPLETED)
+        self.assertEqual(
+            SalaryAccrual.objects.get(session=self.session).status,
+            SalaryAccrual.Status.READY,
+        )
+        self.assertIsNotNone(
+            SalaryAccrual.objects.get(session=self.session).confirmed_at,
+        )
+
+    def test_trainer_cannot_complete_their_session_through_the_edit_form(self) -> None:
+        trainer_user = get_user_model().objects.create_user(
+            username="taylor", role="trainer",
+        )
+        self.trainer.user = trainer_user
+        self.trainer.save()
+        self.client.force_login(trainer_user)
+
+        response = self.client.post(
+            reverse("training:session-update", args=[self.session.pk]),
+            {
+                "title": self.session.title,
+                "description": self.session.description,
+                "specialization": self.discipline.pk,
+                "starts_at": self.session.starts_at.strftime("%Y-%m-%dT%H:%M"),
+                "duration_minutes": self.session.duration_minutes,
+                "capacity": self.session.capacity,
+                "location": self.session.location,
+                "status": TrainingSession.Status.COMPLETED,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, TrainingSession.Status.SCHEDULED)
+
+    def test_confirmed_booking_cannot_be_cancelled_or_refunded(self) -> None:
+        self.client.post(reverse("training:book", args=[self.session.pk]))
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        self.client.post(reverse("training:session-complete", args=[self.session.pk]))
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("training:cancel", args=[self.session.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(self.session.participants.filter(pk=self.user.pk).exists())
+        self.membership.refresh_from_db()
+        self.assertEqual(self.membership.sessions_remaining, 4)
+        self.assertEqual(
+            SalaryAccrual.objects.get(session=self.session).status,
+            SalaryAccrual.Status.READY,
+        )
+
+    def test_completed_session_cannot_be_edited(self) -> None:
+        self.session.status = TrainingSession.Status.COMPLETED
+        self.session.save()
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+
+        self.assertEqual(
+            self.client.get(reverse("training:session-update", args=[self.session.pk])).status_code,
+            404,
+        )
+
+    def test_session_delete_uses_a_confirmation_screen(self) -> None:
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.get(reverse("training:session-delete", args=[self.session.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Confirmation required")
+        self.assertContains(response, "Yes, delete")
+        self.assertNotContains(response, "Update Morning flow")
+
+    def test_session_without_salary_record_is_deleted_after_confirmation(self) -> None:
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(reverse("training:session-delete", args=[self.session.pk]))
+
+        self.assertRedirects(response, reverse("training:session-list"))
+        self.assertFalse(TrainingSession.objects.filter(pk=self.session.pk).exists())
+
+    def test_session_with_salary_record_cannot_be_deleted(self) -> None:
+        SalaryAccrual.objects.create(
+            trainer=self.trainer, session=self.session, participant_count=1,
+            rate_per_participant=10, amount=10,
+        )
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(reverse("training:session-delete", args=[self.session.pk]))
+
+        self.assertRedirects(response, reverse("training:session-list"))
+        self.assertTrue(TrainingSession.objects.filter(pk=self.session.pk).exists())
+
+    def test_salary_status_cannot_skip_or_reverse_the_payout_lifecycle(self) -> None:
+        accrual = SalaryAccrual.objects.create(
+            trainer=self.trainer, session=self.session, participant_count=1,
+            rate_per_participant=10, amount=10,
+        )
+        accrual.status = SalaryAccrual.Status.PAID
+        with self.assertRaises(ValidationError):
+            accrual.save()
+
+        accrual.status = SalaryAccrual.Status.READY
+        accrual.save()
+        self.assertIsNotNone(accrual.confirmed_at)
+        accrual.status = SalaryAccrual.Status.PAID
+        accrual.save()
+        self.assertIsNotNone(accrual.paid_at)
+        accrual.status = SalaryAccrual.Status.READY
+        with self.assertRaises(ValidationError):
+            accrual.save()
+
+    def test_trainer_earnings_show_hold_and_confirmed_totals(self) -> None:
+        trainer_user = get_user_model().objects.create_user(
+            username="taylor", role="trainer",
+        )
+        self.trainer.user = trainer_user
+        self.trainer.save()
+        SalaryAccrual.objects.create(
+            trainer=self.trainer, session=self.session, participant_count=1,
+            rate_per_participant=10, amount=10,
+        )
+        confirmed_session = TrainingSession.objects.create(
+            title="Evening flow", trainer=self.trainer,
+            specialization=self.discipline, capacity=1,
+            starts_at=timezone.now() + timedelta(days=2), location="Studio",
+        )
+        SalaryAccrual.objects.create(
+            trainer=self.trainer, session=confirmed_session, participant_count=2,
+            rate_per_participant=10, amount=20,
+            status=SalaryAccrual.Status.READY,
+        )
+        paid_session = TrainingSession.objects.create(
+            title="Weekend flow", trainer=self.trainer,
+            specialization=self.discipline, capacity=1,
+            starts_at=timezone.now() + timedelta(days=3), location="Studio",
+        )
+        SalaryAccrual.objects.create(
+            trainer=self.trainer, session=paid_session, participant_count=3,
+            rate_per_participant=10, amount=30,
+            status=SalaryAccrual.Status.PAID,
+        )
+        self.client.force_login(trainer_user)
+        response = self.client.get(reverse("training:trainer-earnings"))
+        self.assertEqual(response.context["hold_total"], 10)
+        self.assertEqual(response.context["confirmed_total"], 20)
+        self.assertEqual(response.context["paid_total"], 30)
 
     def test_demo_balance_can_purchase_membership(self) -> None:
         plan = MembershipPlan.objects.create(
@@ -159,6 +346,84 @@ class TrainMateTests(TestCase):
         response = self.client.get(reverse("training:client-list"))
         self.assertContains(response, "member")
 
+    def test_admin_balance_adjustment_creates_a_transaction(self) -> None:
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("training:adjust-client-balance", args=[self.user.pk]),
+            {"amount": "25.50", "description": "Welcome credit"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, Decimal("25.50"))
+        transaction = BalanceTransaction.objects.get(user=self.user)
+        self.assertEqual(transaction.kind, BalanceTransaction.Kind.ADMIN)
+        self.assertIn("Welcome credit", transaction.description)
+
     def test_login_required(self) -> None:
         self.client.logout()
         self.assertEqual(self.client.get("/sessions/").status_code, 302)
+
+    def test_signup_requires_email_and_sends_activation_link(self) -> None:
+        response = self.client.post(
+            reverse("training:signup"),
+            {
+                "username": "new_member", "email": "new@example.com",
+                "first_name": "New", "last_name": "Member",
+                "fitness_level": "beginner",
+                "password1": "strong-test-password-123",
+                "password2": "strong-test-password-123",
+            },
+        )
+
+        self.assertRedirects(response, reverse("training:activation-sent"))
+        new_user = get_user_model().objects.get(username="new_member")
+        self.assertFalse(new_user.is_active)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Activate your TrainMate account", mail.outbox[0].subject)
+        self.assertIn("activate/", mail.outbox[0].body)
+
+    def test_activation_link_activates_account(self) -> None:
+        inactive_user = get_user_model().objects.create_user(
+            username="inactive", email="inactive@example.com", is_active=False,
+        )
+        uid = urlsafe_base64_encode(force_bytes(inactive_user.pk))
+        token = default_token_generator.make_token(inactive_user)
+
+        response = self.client.get(
+            reverse("training:activate-account", args=[uid, token]),
+        )
+
+        self.assertRedirects(response, reverse("login"))
+        inactive_user.refresh_from_db()
+        self.assertTrue(inactive_user.is_active)
+
+    def test_password_reset_sends_email_and_is_rate_limited(self) -> None:
+        cache.clear()
+        self.user.email = "member@example.com"
+        self.user.set_password("strong-test-password-123")
+        self.user.save(update_fields=["email", "password"])
+        response = self.client.post(reverse("password_reset"), {"email": self.user.email})
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("reset/", mail.outbox[0].body)
+
+        for _ in range(4):
+            self.client.post(reverse("password_reset"), {"email": self.user.email})
+        response = self.client.post(reverse("password_reset"), {"email": self.user.email})
+        self.assertRedirects(response, reverse("password_reset"))
+
+    def test_login_is_rate_limited_after_five_failed_attempts(self) -> None:
+        cache.clear()
+        self.client.logout()
+        for _ in range(5):
+            response = self.client.post(
+                reverse("login"), {"username": self.user.username, "password": "wrong"},
+            )
+            self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reverse("login"), {"username": self.user.username, "password": "wrong"},
+        )
+        self.assertRedirects(response, reverse("login"))

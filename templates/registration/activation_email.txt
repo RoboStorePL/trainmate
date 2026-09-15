@@ -1,0 +1,6 @@
+Hi {{ user.username }},
+
+Activate your TrainMate account by opening this link:
+{{ activation_url }}
+
+If you did not create this account, you can ignore this email.

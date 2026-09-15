@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django import forms
@@ -9,15 +10,39 @@ from .models import Trainer, TrainingSession, User
 
 
 class SignUpForm(UserCreationForm):
+    email = forms.EmailField(required=True)
+
     class Meta(UserCreationForm.Meta):
         model = get_user_model()
-        fields = ("username", "first_name", "last_name", "fitness_level")
+        fields = ("username", "email", "first_name", "last_name", "fitness_level")
+
+    def clean_email(self) -> str:
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
 
 
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = get_user_model()
         fields = ("first_name", "last_name", "fitness_level")
+
+
+class BalanceAdjustmentForm(forms.Form):
+    amount = forms.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        label="Adjustment amount (PLN)",
+        help_text="Use a positive amount to add funds and a negative amount to deduct them.",
+    )
+    description = forms.CharField(max_length=255, label="Reason")
+
+    def clean_amount(self) -> Decimal:
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise forms.ValidationError("The adjustment cannot be zero.")
+        return amount
 
 
 class SessionForm(forms.ModelForm):
@@ -34,7 +59,11 @@ class SessionForm(forms.ModelForm):
 
 class TrainerSessionForm(SessionForm):
     class Meta(SessionForm.Meta):
-        exclude = ("participants", "trainer")
+        # Completion changes financial data and is restricted to an admin.
+        fields = (
+            "title", "description", "specialization", "starts_at",
+            "duration_minutes", "capacity", "location",
+        )
 
 
 class TrainerForm(forms.ModelForm):

@@ -1,23 +1,35 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from hashlib import sha256
 from typing import Any
 
+from django import forms as django_forms
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import F, QuerySet, Sum
 from django.http import HttpRequest, HttpResponse
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views import generic
 from django.views.decorators.http import require_POST
 
-from .forms import ProfileForm, SessionForm, SignUpForm, TrainerForm, TrainerSessionForm
+from .forms import (
+    BalanceAdjustmentForm, ProfileForm, SessionForm, SignUpForm, TrainerForm,
+    TrainerSessionForm,
+)
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
     SalaryAccrual, Specialization, Trainer, TrainingSession, User,
@@ -26,6 +38,56 @@ from .models import (
 
 def is_trainer(user: User) -> bool:
     return user.role == User.Role.TRAINER and hasattr(user, "trainer_profile")
+
+
+LOGIN_RATE_LIMIT = 5
+RATE_LIMIT_SECONDS = 15 * 60
+
+
+def rate_limit_key(request: HttpRequest, action: str, identifier: str) -> str:
+    raw_key = f"{action}:{request.META.get('REMOTE_ADDR', '')}:{identifier.lower()}"
+    return f"trainmate-rate-limit:{sha256(raw_key.encode()).hexdigest()}"
+
+
+class RateLimitedLoginView(auth_views.LoginView):
+    template_name = "registration/login.html"
+
+    def get_limit_key(self) -> str:
+        return rate_limit_key(
+            self.request, "login", self.request.POST.get("username", ""),
+        )
+
+    def dispatch(
+        self, request: HttpRequest, *args: Any, **kwargs: Any,
+    ) -> HttpResponse:
+        if request.method == "POST" and cache.get(self.get_limit_key(), 0) >= LOGIN_RATE_LIMIT:
+            messages.error(request, "Too many failed attempts. Try again in 15 minutes.")
+            return redirect("login")
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_invalid(self, form: Any) -> HttpResponse:
+        cache.add(self.get_limit_key(), 0, RATE_LIMIT_SECONDS)
+        cache.incr(self.get_limit_key())
+        return super().form_invalid(form)
+
+    def form_valid(self, form: Any) -> HttpResponse:
+        cache.delete(self.get_limit_key())
+        return super().form_valid(form)
+
+
+class RateLimitedPasswordResetView(auth_views.PasswordResetView):
+    template_name = "registration/password_reset_form.html"
+    email_template_name = "registration/password_reset_email.html"
+    subject_template_name = "registration/password_reset_subject.txt"
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        key = rate_limit_key(request, "password-reset", request.POST.get("email", ""))
+        if cache.get(key, 0) >= LOGIN_RATE_LIMIT:
+            messages.error(request, "Too many reset requests. Try again in 15 minutes.")
+            return redirect("password_reset")
+        cache.add(key, 0, RATE_LIMIT_SECONDS)
+        cache.incr(key)
+        return super().post(request, *args, **kwargs)
 
 
 @login_required
@@ -122,6 +184,39 @@ class ClientList(AdminRequiredMixin, generic.ListView):
     paginate_by = 10
 
     def get_queryset(self) -> QuerySet[User]:
+        return User.objects.filter(role=User.Role.CLIENT).order_by("username", "pk")
+
+
+@login_required
+def adjust_client_balance(request: HttpRequest, pk: int) -> HttpResponse:
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    client = get_object_or_404(User, pk=pk, role=User.Role.CLIENT)
+    form = BalanceAdjustmentForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        amount = form.cleaned_data["amount"]
+        with transaction.atomic():
+            client = User.objects.select_for_update().get(pk=client.pk)
+            if client.balance + amount < 0:
+                form.add_error("amount", "This would make the client balance negative.")
+            else:
+                client.balance += amount
+                client.save(update_fields=["balance"])
+                BalanceTransaction.objects.create(
+                    user=client,
+                    amount=amount,
+                    kind=BalanceTransaction.Kind.ADMIN,
+                    description=f"Admin adjustment: {form.cleaned_data['description']}",
+                )
+                messages.success(request, "Client balance was adjusted.")
+                return redirect("training:client-list")
+    return render(
+        request,
+        "form.html",
+        {"form": form, "title": f"Adjust balance: {client.username}"},
+    )
+
+    def get_queryset(self) -> QuerySet[User]:
         query = self.request.GET.get("q", "").strip()
         return User.objects.filter(
             role=User.Role.CLIENT, is_superuser=False, username__icontains=query,
@@ -165,7 +260,14 @@ class TrainerEarnings(LoginRequiredMixin, UserPassesTestMixin, generic.ListView)
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context["total_accrued"] = self.get_queryset().exclude(
+        accruals = self.get_queryset()
+        context["hold_total"] = accruals.filter(
+            status=SalaryAccrual.Status.ACCRUED,
+        ).aggregate(total=Sum("amount"))["total"] or 0
+        context["confirmed_total"] = accruals.filter(
+            status=SalaryAccrual.Status.READY,
+        ).aggregate(total=Sum("amount"))["total"] or 0
+        context["paid_total"] = accruals.filter(
             status=SalaryAccrual.Status.PAID,
         ).aggregate(total=Sum("amount"))["total"] or 0
         return context
@@ -274,13 +376,21 @@ class SessionCreate(TrainerSessionMixin, generic.CreateView):
 class SessionUpdate(TrainerSessionMixin, generic.UpdateView):
     model = TrainingSession
 
+    def get_queryset(self) -> QuerySet[TrainingSession]:
+        return super().get_queryset().filter(status=TrainingSession.Status.SCHEDULED)
+
 
 class SafeDelete(LoginRequiredMixin, generic.DeleteView):
-    template_name = "confirm_delete.html"
+    def get_template_names(self) -> list[str]:
+        """Use confirmation UI despite the editor mixin's form template."""
+        return ["confirm_delete.html"]
 
     def form_valid(self, form: Any) -> HttpResponse:
+        object_name = str(self.get_object())
         try:
-            return super().form_valid(form)
+            response = super().form_valid(form)
+            messages.success(self.request, f"{object_name} was deleted.")
+            return response
         except ProtectedError:
             messages.error(self.request, "Remove linked sessions first.")
             return redirect(self.success_url)
@@ -289,6 +399,20 @@ class SafeDelete(LoginRequiredMixin, generic.DeleteView):
 class SessionDelete(TrainerSessionMixin, SafeDelete):
     model = TrainingSession
     success_url = reverse_lazy("training:session-list")
+
+    def get_form_class(self) -> type[django_forms.Form]:
+        """DeleteView needs its empty confirmation form, not SessionForm."""
+        return django_forms.Form
+
+    def form_valid(self, form: Any) -> HttpResponse:
+        session = self.get_object()
+        if SalaryAccrual.objects.filter(session=session).exists():
+            messages.error(
+                self.request,
+                "This session cannot be deleted because it has a salary record.",
+            )
+            return redirect("training:session-list")
+        return super().form_valid(form)
 
 
 class TrainerCreate(AdminRequiredMixin, generic.CreateView):
@@ -328,7 +452,46 @@ class SpecializationDelete(AdminRequiredMixin, SafeDelete):
 class SignUp(generic.CreateView):
     form_class = SignUpForm
     template_name = "form.html"
-    success_url = reverse_lazy("login")
+
+    def form_valid(self, form: SignUpForm) -> HttpResponse:
+        self.object = form.save(commit=False)
+        self.object.is_active = False
+        self.object.save()
+        uid = urlsafe_base64_encode(force_bytes(self.object.pk))
+        token = default_token_generator.make_token(self.object)
+        activation_url = self.request.build_absolute_uri(
+            reverse_lazy("training:activate-account", args=[uid, token]),
+        )
+        message = render_to_string(
+            "registration/activation_email.txt",
+            {"user": self.object, "activation_url": activation_url},
+        )
+        send_mail(
+            "Activate your TrainMate account",
+            message,
+            None,
+            [self.object.email],
+        )
+        return redirect("training:activation-sent")
+
+
+def activate_account(request: HttpRequest, uidb64: str, token: str) -> HttpResponse:
+    try:
+        user_id = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=user_id)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+    if user is not None and default_token_generator.check_token(user, token):
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+        messages.success(request, "Your email is confirmed. You can now log in.")
+        return redirect("login")
+    return render(request, "registration/activation_invalid.html", status=400)
+
+
+def activation_sent(request: HttpRequest) -> HttpResponse:
+    return render(request, "registration/activation_sent.html")
 
 
 class Profile(EditorMixin, generic.UpdateView):
@@ -337,6 +500,24 @@ class Profile(EditorMixin, generic.UpdateView):
 
     def get_object(self, queryset: QuerySet[User] | None = None) -> User:
         return self.request.user
+
+
+@login_required
+@require_POST
+def complete_session(request: HttpRequest, pk: int) -> HttpResponse:
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    with transaction.atomic():
+        session = get_object_or_404(
+            TrainingSession.objects.select_for_update(), pk=pk,
+        )
+        if session.status == TrainingSession.Status.COMPLETED:
+            messages.info(request, "This session is already completed.")
+        else:
+            session.status = TrainingSession.Status.COMPLETED
+            session.save()
+            messages.success(request, "Session confirmed and salary accrual updated.")
+    return redirect("training:session-list")
 
 
 @login_required
@@ -371,6 +552,24 @@ def book(request: HttpRequest, pk: int) -> HttpResponse:
                     membership=membership, session=session, user=request.user,
                 )
                 session.participants.add(request.user)
+                participant_count = session.participants.count()
+                accrual, created = SalaryAccrual.objects.get_or_create(
+                    session=session,
+                    defaults={
+                        "trainer": session.trainer,
+                        "participant_count": participant_count,
+                        "rate_per_participant": session.trainer.rate_per_participant,
+                        "amount": participant_count * session.trainer.rate_per_participant,
+                        "status": SalaryAccrual.Status.ACCRUED,
+                    },
+                )
+                if not created and accrual.status == SalaryAccrual.Status.ACCRUED:
+                    accrual.participant_count = participant_count
+                    accrual.rate_per_participant = session.trainer.rate_per_participant
+                    accrual.amount = participant_count * session.trainer.rate_per_participant
+                    accrual.save(update_fields=[
+                        "participant_count", "rate_per_participant", "amount",
+                    ])
                 messages.success(request, "Your place is reserved.")
     return redirect(session)
 
@@ -378,15 +577,36 @@ def book(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required
 @require_POST
 def cancel(request: HttpRequest, pk: int) -> HttpResponse:
-    session = get_object_or_404(TrainingSession, pk=pk)
-    usage = MembershipUsage.objects.filter(
-        session=session, user=request.user,
-    ).select_related("membership").first()
-    session.participants.remove(request.user)
-    if usage:
-        Membership.objects.filter(pk=usage.membership_id).update(
-            sessions_remaining=F("sessions_remaining") + 1,
+    with transaction.atomic():
+        session = get_object_or_404(
+            TrainingSession.objects.select_for_update(), pk=pk,
         )
-        usage.delete()
-    messages.success(request, "Your booking was cancelled.")
+        usage = MembershipUsage.objects.filter(
+            session=session, user=request.user,
+        ).select_related("membership").first()
+        accrual = SalaryAccrual.objects.filter(session=session).first()
+        if usage is None:
+            messages.info(request, "You do not have a booking for this session.")
+        elif session.status == TrainingSession.Status.COMPLETED or (
+            accrual is not None and accrual.status != SalaryAccrual.Status.ACCRUED
+        ):
+            messages.error(
+                request,
+                "This booking cannot be cancelled after the session is confirmed.",
+            )
+        else:
+            session.participants.remove(request.user)
+            if accrual:
+                participant_count = session.participants.count()
+                if participant_count == 0:
+                    accrual.delete()
+                else:
+                    accrual.participant_count = participant_count
+                    accrual.amount = participant_count * accrual.rate_per_participant
+                    accrual.save(update_fields=["participant_count", "amount"])
+            Membership.objects.filter(pk=usage.membership_id).update(
+                sessions_remaining=F("sessions_remaining") + 1,
+            )
+            usage.delete()
+            messages.success(request, "Your booking was cancelled.")
     return redirect(session)
