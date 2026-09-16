@@ -16,7 +16,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import F, QuerySet, Sum
+from django.db.models import Count, F, Q, QuerySet, Sum
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
@@ -607,6 +607,8 @@ class TrainerEarnings(LoginRequiredMixin, UserPassesTestMixin, generic.ListView)
         context["paid_total"] = accruals.filter(
             status=SalaryAccrual.Status.PAID,
         ).aggregate(total=Sum("amount"))["total"] or 0
+        context["outstanding_total"] = context["hold_total"] + context["confirmed_total"]
+        context["total_earned"] = context["outstanding_total"] + context["paid_total"]
         return context
 
 
@@ -617,6 +619,41 @@ class PayoutList(AdminRequiredMixin, generic.ListView):
 
     def get_queryset(self) -> QuerySet[SalaryAccrual]:
         return SalaryAccrual.objects.select_related("trainer", "session")
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        accruals = self.get_queryset()
+        totals = accruals.aggregate(
+            accrued_total=Sum("amount", filter=Q(status=SalaryAccrual.Status.ACCRUED)),
+            ready_total=Sum("amount", filter=Q(status=SalaryAccrual.Status.READY)),
+            paid_total=Sum("amount", filter=Q(status=SalaryAccrual.Status.PAID)),
+        )
+        context.update({key: value or 0 for key, value in totals.items()})
+        context["outstanding_total"] = context["accrued_total"] + context["ready_total"]
+
+        trainer_totals = Trainer.objects.filter(accruals__isnull=False).annotate(
+            session_count=Count("accruals"),
+            accrued_total=Sum(
+                "accruals__amount",
+                filter=Q(accruals__status=SalaryAccrual.Status.ACCRUED),
+            ),
+            ready_total=Sum(
+                "accruals__amount",
+                filter=Q(accruals__status=SalaryAccrual.Status.READY),
+            ),
+            paid_total=Sum(
+                "accruals__amount",
+                filter=Q(accruals__status=SalaryAccrual.Status.PAID),
+            ),
+        ).order_by("name")
+        for trainer in trainer_totals:
+            trainer.accrued_total = trainer.accrued_total or 0
+            trainer.ready_total = trainer.ready_total or 0
+            trainer.paid_total = trainer.paid_total or 0
+            trainer.outstanding_total = trainer.accrued_total + trainer.ready_total
+            trainer.total_earned = trainer.outstanding_total + trainer.paid_total
+        context["trainer_totals"] = trainer_totals
+        return context
 
 
 @login_required

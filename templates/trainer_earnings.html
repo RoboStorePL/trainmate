@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>My earnings</h1>
-  <div class="stats"><article><strong>{{ hold_total }} PLN</strong><span>On hold</span></article><article><strong>{{ confirmed_total }} PLN</strong><span>Confirmed for payout</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
-  <p class="muted">On hold means the payment has not been confirmed yet. Confirmed is ready for payout; Paid is money already sent.</p>
+  <div class="stats"><article><strong>{{ total_earned }} PLN</strong><span>Total earned</span></article><article><strong>{{ outstanding_total }} PLN</strong><span>Outstanding</span></article><article><strong>{{ hold_total }} PLN</strong><span>On hold</span></article><article><strong>{{ confirmed_total }} PLN</strong><span>Ready for payout</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
+  <p class="muted">Outstanding includes On hold and Ready for payout. Total earned includes every recorded session, including Paid.</p>
   <div class="cards">{% for accrual in accruals %}<article>
     <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.session.title }}</h2>
     <p>{{ accrual.participant_count }} participants × {{ accrual.rate_per_participant }} PLN</p>

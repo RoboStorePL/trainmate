@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>Trainer salaries</h1>
-  <p class="muted">On hold is created when a client books. Completed sessions become Confirmed. Use Manage to edit an amount or mark it Paid.</p>
+  <p class="muted">Accrued is created when a client books. Completed sessions become Ready for payout. Use Manage to edit an amount or mark it Paid.</p>
+  <div class="stats salary-stats"><article><strong>{{ outstanding_total }} PLN</strong><span>Outstanding</span></article><article><strong>{{ accrued_total }} PLN</strong><span>Accrued</span></article><article><strong>{{ ready_total }} PLN</strong><span>Ready for payout</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
+  <h2>Totals by trainer</h2>
+  <div class="table-wrap salary-table"><table>
+    <thead><tr><th>Trainer</th><th>Sessions</th><th>Accrued</th><th>Ready</th><th>Paid</th><th>Outstanding</th><th>Total earned</th></tr></thead>
+    <tbody>{% for trainer in trainer_totals %}<tr><td><strong>{{ trainer.name }}</strong></td><td class="number">{{ trainer.session_count }}</td><td class="money">{{ trainer.accrued_total }} PLN</td><td class="money">{{ trainer.ready_total }} PLN</td><td class="money">{{ trainer.paid_total }} PLN</td><td class="money"><strong>{{ trainer.outstanding_total }} PLN</strong></td><td class="money"><strong>{{ trainer.total_earned }} PLN</strong></td></tr>{% empty %}<tr><td colspan="7">No trainer totals yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h2>Session details</h2>
   <div class="table-wrap salary-table"><table>
     <thead><tr><th>Trainer</th><th>Session</th><th>Participants</th><th>Rate</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
     <tbody>{% for accrual in accruals %}<tr>

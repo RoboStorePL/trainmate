@@ -464,6 +464,23 @@ class TrainMateTests(TestCase):
         self.assertEqual(response.context["hold_total"], 10)
         self.assertEqual(response.context["confirmed_total"], 20)
         self.assertEqual(response.context["paid_total"], 30)
+        self.assertEqual(response.context["outstanding_total"], 30)
+        self.assertEqual(response.context["total_earned"], 60)
+
+    def test_admin_payout_page_groups_totals_by_trainer(self) -> None:
+        SalaryAccrual.objects.create(
+            trainer=self.trainer, session=self.session, participant_count=1,
+            rate_per_participant=10, amount=10,
+        )
+        admin = get_user_model().objects.create_superuser(
+            username="payout-admin", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.get(reverse("training:payout-list"))
+
+        self.assertEqual(response.context["accrued_total"], 10)
+        self.assertEqual(response.context["outstanding_total"], 10)
+        self.assertEqual(response.context["trainer_totals"][0].total_earned, 10)
 
     def test_demo_balance_can_purchase_membership(self) -> None:
         plan = MembershipPlan.objects.create(
