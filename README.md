@@ -47,10 +47,21 @@ navigation into one workspace.
 
 ### Training sessions
 
-Clients can search scheduled sessions, while authorized users can create,
-edit, delete and confirm them.
+Clients browse a weekly calendar and book a specific date and time. Trainers
+can create one-time sessions or regular weekly rules; each active rule creates
+only the next three weeks of bookable sessions.
 
 ![Training sessions](docs/screenshots/training-sessions.png)
+
+### Reception kiosk and attendance
+
+A dedicated, restricted kiosk account can be left on a tablet at reception.
+Staff select a session scheduled for today, then booked clients tap **I’m here**
+to record their attendance immediately. Trainers and administrators can later
+correct a status to **Booked**, **Attended**, or **Absent** from the session
+details.
+
+![Reception kiosk check-in](docs/screenshots/reception-kiosk-check-in.png)
 
 ### Trainers and clients
 
@@ -126,6 +137,7 @@ a trusted private network/VPN and rotate device tokens regularly.
 | **Client** | Browse and book sessions, manage their profile and membership, view their own Vision Lab data. |
 | **Trainer** | Create, edit and delete only their own sessions; view their earnings. |
 | **Administrator** | Manage users, trainers, disciplines, plans, balances, every session, payouts and Vision data. |
+| **Reception kiosk** | View only today’s sessions and check in clients already booked for the selected session. |
 
 Create the first local administrator with:
 
@@ -138,7 +150,7 @@ python manage.py createsuperuser
 - **Backend:** Python, Django
 - **Frontend:** Django templates, HTML, CSS
 - **Vision:** Raspberry Pi 5, Camera Module 3 Wide, Picamera2, MediaPipe and OpenCV
-- **Data:** Django ORM and local SQLite for development
+- **Data:** Django ORM, SQLite for local development and Neon PostgreSQL in production
 - **Administration:** Django Admin
 
 ## Local setup
