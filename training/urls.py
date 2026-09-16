@@ -19,6 +19,7 @@ urlpatterns = [
     path("vision/analyses/<int:pk>/snapshot/", views.vision_snapshot, name="vision-snapshot-view"),
     path("earnings/", views.TrainerEarnings.as_view(), name="trainer-earnings"),
     path("payouts/", views.PayoutList.as_view(), name="payout-list"),
+    path("payouts/trainers/<int:trainer_pk>/pay/", views.TrainerPayoutCreate.as_view(), name="trainer-payout-create"),
     path("reception/", views.ReceptionSessionList.as_view(), name="reception-session-list"),
     path("reception/sessions/<int:pk>/", views.ReceptionCheckIn.as_view(), name="reception-check-in"),
     path("reception/sessions/<int:session_pk>/clients/<int:user_pk>/check-in/", views.kiosk_check_in, name="kiosk-check-in"),

@@ -31,12 +31,13 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
     BalanceAdjustmentForm, ProfileForm, RecurringScheduleForm, SessionForm,
-    SignUpForm, TrainerForm, TrainerRecurringScheduleForm, TrainerSessionForm,
+    SignUpForm, TrainerForm, TrainerPayoutForm, TrainerRecurringScheduleForm,
+    TrainerSessionForm,
 )
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
     RecurringSchedule, SalaryAccrual, SessionAttendance, Specialization, Trainer,
-    TrainingSession, User,
+    TrainerPayout, TrainingSession, User,
     VisionAnalysis, VisionDevice,
 )
 
@@ -654,6 +655,55 @@ class PayoutList(AdminRequiredMixin, generic.ListView):
             trainer.total_earned = trainer.outstanding_total + trainer.paid_total
         context["trainer_totals"] = trainer_totals
         return context
+
+
+class TrainerPayoutCreate(AdminRequiredMixin, generic.FormView):
+    template_name = "trainer_payout_confirm.html"
+    form_class = TrainerPayoutForm
+    success_url = reverse_lazy("training:payout-list")
+
+    def get_trainer(self) -> Trainer:
+        return get_object_or_404(Trainer, pk=self.kwargs["trainer_pk"])
+
+    def get_ready_accruals(self) -> QuerySet[SalaryAccrual]:
+        return SalaryAccrual.objects.filter(
+            trainer=self.get_trainer(), status=SalaryAccrual.Status.READY,
+            payout__isnull=True,
+        ).select_related("session").order_by("session__starts_at", "pk")
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        ready_accruals = self.get_ready_accruals()
+        context.update({
+            "trainer": self.get_trainer(),
+            "ready_accruals": ready_accruals,
+            "payout_amount": ready_accruals.aggregate(total=Sum("amount"))["total"] or 0,
+        })
+        return context
+
+    def form_valid(self, form: TrainerPayoutForm) -> HttpResponse:
+        trainer = self.get_trainer()
+        with transaction.atomic():
+            ready_accruals = list(SalaryAccrual.objects.select_for_update().filter(
+                trainer=trainer, status=SalaryAccrual.Status.READY,
+                payout__isnull=True,
+            ).select_related("session").order_by("session__starts_at", "pk"))
+            if not ready_accruals:
+                form.add_error(None, "There are no ready salary records left to pay.")
+                return self.form_invalid(form)
+            amount = sum((accrual.amount for accrual in ready_accruals), Decimal("0.00"))
+            payout = TrainerPayout.objects.create(
+                trainer=trainer, amount=amount, note=form.cleaned_data["note"],
+            )
+            for accrual in ready_accruals:
+                accrual.status = SalaryAccrual.Status.PAID
+                accrual.payout = payout
+                accrual.save(update_fields=["status", "payout"])
+        messages.success(
+            self.request,
+            f"Paid {amount} PLN to {trainer.name} for {len(ready_accruals)} sessions.",
+        )
+        return super().form_valid(form)
 
 
 @login_required

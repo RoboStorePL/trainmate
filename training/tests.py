@@ -17,7 +17,7 @@ from django.utils.http import urlsafe_base64_encode
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
     RecurringSchedule, SessionAttendance, Specialization, Trainer, TrainingSession,
-    VisionAnalysis, VisionDevice,
+    TrainerPayout, VisionAnalysis, VisionDevice,
 )
 
 
@@ -481,6 +481,39 @@ class TrainMateTests(TestCase):
         self.assertEqual(response.context["accrued_total"], 10)
         self.assertEqual(response.context["outstanding_total"], 10)
         self.assertEqual(response.context["trainer_totals"][0].total_earned, 10)
+
+    def test_admin_can_pay_all_ready_sessions_to_one_trainer_in_a_batch(self) -> None:
+        ready_one = SalaryAccrual.objects.create(
+            trainer=self.trainer, session=self.session, participant_count=1,
+            rate_per_participant=10, amount=10, status=SalaryAccrual.Status.READY,
+        )
+        second_session = TrainingSession.objects.create(
+            title="Second class", trainer=self.trainer, specialization=self.discipline,
+            starts_at=timezone.now() + timedelta(days=2), location="Studio",
+        )
+        ready_two = SalaryAccrual.objects.create(
+            trainer=self.trainer, session=second_session, participant_count=2,
+            rate_per_participant=10, amount=20, status=SalaryAccrual.Status.READY,
+        )
+        admin = get_user_model().objects.create_superuser(
+            username="batch-payout-admin", password="test-password",
+        )
+        self.client.force_login(admin)
+
+        url = reverse("training:trainer-payout-create", args=[self.trainer.pk])
+        self.assertContains(self.client.get(url), "30 PLN")
+        response = self.client.post(url, {"note": "September transfer"})
+
+        self.assertRedirects(response, reverse("training:payout-list"))
+        payout = TrainerPayout.objects.get(trainer=self.trainer)
+        self.assertEqual(payout.amount, 30)
+        self.assertEqual(payout.note, "September transfer")
+        ready_one.refresh_from_db()
+        ready_two.refresh_from_db()
+        self.assertEqual(ready_one.status, SalaryAccrual.Status.PAID)
+        self.assertEqual(ready_two.status, SalaryAccrual.Status.PAID)
+        self.assertEqual(ready_one.payout, payout)
+        self.assertEqual(ready_two.payout, payout)
 
     def test_demo_balance_can_purchase_membership(self) -> None:
         plan = MembershipPlan.objects.create(

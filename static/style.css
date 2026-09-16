@@ -201,6 +201,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .undo-check-in { padding: 9px 12px; background: #edf0e8; color: #365c3b; font-size: 13px; }
 .table-action { display: inline-block; padding: 7px 12px; border: 1px solid #76916e; border-radius: 7px; color: #365c3b; font-size: 13px; font-weight: 700; }
 .table-action:hover { background: #e9f0e4; text-decoration: none; }
+.payout-confirmation { max-width: 860px; }
+.payout-session-list { margin: 0; padding: 0; list-style: none; }
+.payout-session-list li { display: flex; justify-content: space-between; gap: 18px; padding: 12px 0; border-top: 1px solid #e5e9e1; }
+.payout-session-list li:first-child { border-top: 0; }
 .calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 28px 0 14px; }
 .calendar-heading h2 { margin: 0; font-size: 20px; text-align: center; }
 .calendar-nav { padding: 8px 10px; border-radius: 7px; color: #456b4c; font-weight: 700; }

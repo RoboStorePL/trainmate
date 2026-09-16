@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="payout-confirmation">
+    <span class="tag">CONFIRM PAYOUT</span>
+    <h1>Pay {{ trainer.name }}</h1>
+    <p class="muted">This creates one payout record and marks every listed session as Paid.</p>
+    <div class="stats"><article><strong>{{ payout_amount }} PLN</strong><span>Total payment</span></article><article><strong>{{ ready_accruals|length }}</strong><span>Ready sessions</span></article></div>
+    <article><h2>Included sessions</h2><ul class="payout-session-list">{% for accrual in ready_accruals %}<li><span>{{ accrual.session.starts_at|date:"d M Y" }} · {{ accrual.session.title }}</span><strong>{{ accrual.amount }} PLN</strong></li>{% endfor %}</ul></article>
+    <article class="form-panel"><form method="post">{% csrf_token %}{{ form.as_p }}<button>Confirm payment of {{ payout_amount }} PLN</button><a class="cancel" href="{% url 'training:payout-list' %}">Cancel</a></form></article>
+  </section>
+{% endblock %}

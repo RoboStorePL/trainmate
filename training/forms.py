@@ -45,6 +45,15 @@ class BalanceAdjustmentForm(forms.Form):
         return amount
 
 
+class TrainerPayoutForm(forms.Form):
+    note = forms.CharField(
+        max_length=255,
+        required=False,
+        label="Payment reference or note",
+        help_text="Optional: for example, bank transfer reference or payout period.",
+    )
+
+
 class SessionForm(forms.ModelForm):
     class Meta:
         model = TrainingSession

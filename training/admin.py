@@ -5,7 +5,7 @@ from django.http import HttpRequest
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
     RecurringSchedule, SalaryAccrual, SessionAttendance, Specialization, Trainer,
-    TrainingSession, User,
+    TrainerPayout, TrainingSession, User,
     VisionAnalysis, VisionDevice,
 )
 
@@ -61,7 +61,7 @@ class SalaryAccrualAdmin(admin.ModelAdmin):
     search_fields = ("trainer__name", "session__title")
     fields = (
         "trainer", "session", "participant_count", "rate_per_participant",
-        "amount", "status", "admin_note", "confirmed_at", "paid_at",
+        "amount", "status", "payout", "admin_note", "confirmed_at", "paid_at",
     )
     readonly_fields = ("confirmed_at", "paid_at")
 
@@ -71,6 +71,20 @@ class SalaryAccrualAdmin(admin.ModelAdmin):
     def has_delete_permission(
         self, request: HttpRequest, obj: object | None = None,
     ) -> bool:
+        return False
+
+
+@admin.register(TrainerPayout)
+class TrainerPayoutAdmin(admin.ModelAdmin):
+    list_display = ("trainer", "amount", "paid_at", "note")
+    search_fields = ("trainer__name", "note")
+    list_select_related = ("trainer",)
+    readonly_fields = ("trainer", "amount", "paid_at", "note")
+
+    def has_add_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
         return False
 
 

@@ -32,7 +32,8 @@ Demo client:
 - **Memberships** — demo PLN balance, plans with a visit limit and validity
   period, automatic visit consumption and eligible cancellation refunds.
 - **Operations** — clients, trainers, disciplines, balances and trainer salary
-  accruals are managed through the app and Django Admin.
+  accruals are managed through the app and Django Admin. Ready salary records
+  can be paid as one auditable batch per trainer.
 - **Vision Lab** — on-device pose landmarks from a Raspberry Pi camera, a
   private low-latency browser preview and a compact progress history.
 
