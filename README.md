@@ -156,10 +156,13 @@ web service; it deliberately does not contain database credentials.
 2. Push this repository to GitHub, including `render.yaml` and `build.sh`.
 3. In Render, choose **New → Blueprint** and connect the repository.
 4. When Render prompts for secrets, enter the Neon URL as `DATABASE_URL` and
-   choose a password for `DEMO_PASSWORD`. Render generates `SECRET_KEY` itself.
+   choose a password for `DEMO_PASSWORD`, and set `ADMIN_USERNAME` plus a unique
+   `ADMIN_PASSWORD` for the first Django administrator. Render generates
+   `SECRET_KEY` itself.
 5. After the deploy finishes, visit the supplied `.onrender.com` URL. The build
    creates a low-privilege demonstration client with username `user` and the
-   password configured in `DEMO_PASSWORD`.
+   password configured in `DEMO_PASSWORD`, plus the administrator configured
+   through `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
 
 Never commit `.env` or a Neon connection string. Locally, place the connection
 string in `.env` as `DATABASE_URL=postgresql://...`; Django reads it through
