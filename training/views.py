@@ -300,6 +300,25 @@ def kiosk_check_in(request: HttpRequest, session_pk: int, user_pk: int) -> HttpR
 
 @login_required
 @require_POST
+def kiosk_undo_check_in(request: HttpRequest, session_pk: int, user_pk: int) -> HttpResponse:
+    if not can_use_reception(request.user):
+        raise PermissionDenied
+    session = get_object_or_404(
+        TrainingSession, pk=session_pk, starts_at__date=timezone.localdate(),
+        status=TrainingSession.Status.SCHEDULED,
+    )
+    user = get_object_or_404(session.participants, pk=user_pk)
+    attendance = SessionAttendance.objects.filter(session=session, user=user).first()
+    if attendance is not None and attendance.status == SessionAttendance.Status.ATTENDED:
+        attendance.status = SessionAttendance.Status.BOOKED
+        attendance.checked_in_at = None
+        attendance.save(update_fields=["status", "checked_in_at", "updated_at"])
+        messages.info(request, f"Check-in for {user.get_full_name() or user.username} was undone.")
+    return redirect("training:reception-check-in", pk=session.pk)
+
+
+@login_required
+@require_POST
 def update_attendance(request: HttpRequest, session_pk: int, user_pk: int) -> HttpResponse:
     session = get_object_or_404(TrainingSession, pk=session_pk)
     if not (request.user.is_superuser or session.trainer.user_id == request.user.pk):

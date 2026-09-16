@@ -9,6 +9,7 @@ class KioskAccessMiddleware:
 
     allowed_url_names = {
         "login", "logout", "reception-session-list", "reception-check-in", "kiosk-check-in",
+        "kiosk-undo-check-in",
     }
 
     def __init__(self, get_response):

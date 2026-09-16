@@ -96,6 +96,13 @@ class TrainMateTests(TestCase):
             SessionAttendance.objects.get(session=today_session, user=self.user).status,
             SessionAttendance.Status.ATTENDED,
         )
+        response = self.client.post(
+            reverse("training:kiosk-undo-check-in", args=[today_session.pk, self.user.pk]),
+        )
+        self.assertRedirects(response, reverse("training:reception-check-in", args=[today_session.pk]))
+        attendance = SessionAttendance.objects.get(session=today_session, user=self.user)
+        self.assertEqual(attendance.status, SessionAttendance.Status.BOOKED)
+        self.assertIsNone(attendance.checked_in_at)
         self.assertRedirects(self.client.get(reverse("training:home")), reverse("training:reception-session-list"))
 
     def test_manager_can_correct_attendance(self) -> None:

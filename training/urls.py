@@ -22,6 +22,7 @@ urlpatterns = [
     path("reception/", views.ReceptionSessionList.as_view(), name="reception-session-list"),
     path("reception/sessions/<int:pk>/", views.ReceptionCheckIn.as_view(), name="reception-check-in"),
     path("reception/sessions/<int:session_pk>/clients/<int:user_pk>/check-in/", views.kiosk_check_in, name="kiosk-check-in"),
+    path("reception/sessions/<int:session_pk>/clients/<int:user_pk>/undo-check-in/", views.kiosk_undo_check_in, name="kiosk-undo-check-in"),
     path("sessions/", views.SessionList.as_view(), name="session-list"),
     path("sessions/create/", views.SessionCreate.as_view(), name="session-create"),
     path("schedules/", views.RecurringScheduleList.as_view(), name="recurring-schedule-list"),

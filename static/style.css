@@ -196,7 +196,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .check-in-row h3, .check-in-row p { margin: 0; }
 .check-in-row p { color: #6d796e; font-size: 13px; }
 .check-in-button { min-width: 140px; min-height: 54px; font-size: 18px; font-weight: 750; }
+.check-in-complete { display: flex; align-items: center; gap: 10px; }
 .checked-in { padding: 14px 16px; border-radius: 9px; background: #dcebd3; color: #3f6a32; font-weight: 800; }
+.undo-check-in { padding: 9px 12px; background: #edf0e8; color: #365c3b; font-size: 13px; }
 .table-action { display: inline-block; padding: 7px 12px; border: 1px solid #76916e; border-radius: 7px; color: #365c3b; font-size: 13px; font-weight: 700; }
 .table-action:hover { background: #e9f0e4; text-decoration: none; }
 .calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 28px 0 14px; }
@@ -246,5 +248,6 @@ tbody tr:last-child td { border-bottom: 0; }
   .attendance-row, .check-in-row { align-items: flex-start; flex-direction: column; }
   .attendance-row form { width: 100%; }
   .check-in-button { width: 100%; }
+  .check-in-complete { width: 100%; justify-content: space-between; }
   .vision-live-panel { grid-template-columns: 1fr; }
 }
