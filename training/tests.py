@@ -212,6 +212,7 @@ class TrainMateTests(TestCase):
         self.client.force_login(admin)
         self.assertEqual(self.client.get(reverse("training:trainer-create")).status_code, 200)
         self.assertEqual(self.client.get(reverse("training:specialization-create")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("training:recurring-schedule-list")).status_code, 200)
 
     def test_admin_can_link_only_trainer_user_to_profile(self) -> None:
         trainer_user = get_user_model().objects.create_user(

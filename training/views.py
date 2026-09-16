@@ -639,8 +639,9 @@ class RecurringScheduleMixin(EditorMixin, UserPassesTestMixin):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
+        schedule = getattr(self, "object", None)
         context.update({
-            "form_title": "Edit regular schedule" if self.object else "Create regular schedule",
+            "form_title": "Edit regular schedule" if schedule else "Create regular schedule",
             "back_url": reverse_lazy("training:recurring-schedule-list"),
         })
         return context
