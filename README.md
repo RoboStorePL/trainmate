@@ -146,6 +146,26 @@ Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/). During local
 development, Django's console email backend prints activation and password reset
 links to the terminal.
 
+## Deploy with Neon and Render
+
+TrainMate is prepared to run the Django web service on **Render** and store its
+production data in **Neon PostgreSQL**. The `render.yaml` Blueprint defines the
+web service; it deliberately does not contain database credentials.
+
+1. Create a Neon PostgreSQL project and copy a fresh pooled connection string.
+2. Push this repository to GitHub, including `render.yaml` and `build.sh`.
+3. In Render, choose **New → Blueprint** and connect the repository.
+4. When Render prompts for secrets, enter the Neon URL as `DATABASE_URL` and
+   choose a password for `DEMO_PASSWORD`. Render generates `SECRET_KEY` itself.
+5. After the deploy finishes, visit the supplied `.onrender.com` URL. The build
+   creates a low-privilege demonstration client with username `user` and the
+   password configured in `DEMO_PASSWORD`.
+
+Never commit `.env` or a Neon connection string. Locally, place the connection
+string in `.env` as `DATABASE_URL=postgresql://...`; Django reads it through
+`python-dotenv` while operating-system environment variables still take
+precedence.
+
 ## Security and production notes
 
 - Accounts require email activation; password reset uses Django's time-limited
@@ -160,6 +180,11 @@ Copy [.env.example](.env.example) to the deployment environment and configure a
 private `SECRET_KEY`, `DEBUG=0`, allowed hosts and SMTP credentials. For a
 multi-server deployment, use a shared cache such as Redis for rate limits and
 live frames.
+
+Render's free web-service filesystem is temporary. The live Vision Lab frame is
+already temporary by design, but persisted progress snapshots need external
+object storage (for example, S3 or Cloudinary) before relying on them in a
+long-lived public deployment.
 
 ```bash
 python manage.py test

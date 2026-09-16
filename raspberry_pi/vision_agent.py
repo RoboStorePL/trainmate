@@ -14,17 +14,24 @@ from urllib.request import Request, urlopen
 
 import cv2
 import mediapipe as mp
-from picamera2 import Picamera2
+import numpy as np
+from picamera2 import Picamera2, Preview
 
 
 SERVER_URL = os.environ.get("TRAINMATE_VISION_URL", "")
 DEVICE_TOKEN = os.environ.get("TRAINMATE_VISION_TOKEN", "")
 ACTIVITY = os.environ.get("TRAINMATE_ACTIVITY", "yoga")
 SNAPSHOT_INTERVAL_SECONDS = float(os.environ.get("TRAINMATE_SNAPSHOT_INTERVAL_SECONDS", "60"))
-LIVE_FRAME_INTERVAL_SECONDS = float(os.environ.get("TRAINMATE_LIVE_FRAME_INTERVAL_SECONDS", "1"))
+LIVE_FRAME_INTERVAL_SECONDS = float(os.environ.get("TRAINMATE_LIVE_FRAME_INTERVAL_SECONDS", "0.2"))
 SAVE_PROGRESS_SNAPSHOTS = os.environ.get(
     "TRAINMATE_SAVE_PROGRESS_SNAPSHOTS", "1",
 ).lower() in {"1", "true", "yes"}
+LOCAL_PREVIEW = os.environ.get("TRAINMATE_LOCAL_PREVIEW", "off").lower()
+PREVIEW_WIDTH = int(os.environ.get("TRAINMATE_PREVIEW_WIDTH", "800"))
+PREVIEW_HEIGHT = int(os.environ.get("TRAINMATE_PREVIEW_HEIGHT", "480"))
+LOCAL_OVERLAY_INTERVAL_SECONDS = float(
+    os.environ.get("TRAINMATE_LOCAL_OVERLAY_INTERVAL_SECONDS", "0.1"),
+)
 LANDMARKS = {
     "left_shoulder": 11, "right_shoulder": 12, "left_hip": 23,
     "right_hip": 24, "left_knee": 25, "right_knee": 26,
@@ -37,8 +44,12 @@ def validate_configuration() -> None:
         raise ValueError("TRAINMATE_VISION_URL must end with /api/vision/analyses/.")
     if not DEVICE_TOKEN:
         raise ValueError("Set TRAINMATE_VISION_TOKEN to the device token.")
-    if SNAPSHOT_INTERVAL_SECONDS < 10 or LIVE_FRAME_INTERVAL_SECONDS < 0.5:
-        raise ValueError("Use a snapshot interval of at least 10 s and live interval of at least 0.5 s.")
+    if SNAPSHOT_INTERVAL_SECONDS < 10 or LIVE_FRAME_INTERVAL_SECONDS < 0.1:
+        raise ValueError("Use a snapshot interval of at least 10 s and live interval of at least 0.1 s.")
+    if LOCAL_PREVIEW not in {"off", "qtgl", "qt"}:
+        raise ValueError("TRAINMATE_LOCAL_PREVIEW must be 'off', 'qtgl' or 'qt'.")
+    if LOCAL_OVERLAY_INTERVAL_SECONDS < 0.05:
+        raise ValueError("TRAINMATE_LOCAL_OVERLAY_INTERVAL_SECONDS must be at least 0.05.")
 
 
 def endpoint(path: str) -> str:
@@ -118,23 +129,61 @@ def annotated_jpeg(frame: Any, result: Any) -> bytes:
     return encoded.tobytes()
 
 
+def local_pose_overlay(result: Any, width: int, height: int) -> np.ndarray:
+    """Build a transparent skeleton layer for the local Picamera2 preview."""
+    overlay = np.zeros((height, width, 4), dtype=np.uint8)
+    if not result.pose_landmarks:
+        return overlay
+    landmarks = result.pose_landmarks.landmark
+    for start, end in mp.solutions.pose.POSE_CONNECTIONS:
+        first, second = landmarks[start], landmarks[end]
+        if min(first.visibility, second.visibility) < 0.35:
+            continue
+        cv2.line(
+            overlay, (int(first.x * width), int(first.y * height)),
+            (int(second.x * width), int(second.y * height)),
+            (80, 235, 115, 230), 3,
+        )
+    for landmark in landmarks:
+        if landmark.visibility >= 0.35:
+            cv2.circle(
+                overlay, (int(landmark.x * width), int(landmark.y * height)),
+                5, (255, 245, 120, 255), -1,
+            )
+    return overlay
+
+
 def main() -> None:
     validate_configuration()
     camera = Picamera2()
+    frame_width, frame_height = 960, 540
     camera.configure(camera.create_preview_configuration(
-        main={"size": (960, 540), "format": "RGB888"},
+        main={"size": (frame_width, frame_height), "format": "RGB888"},
+        buffer_count=4,
     ))
+    if LOCAL_PREVIEW != "off":
+        # Raspberry Pi OS Bookworm's Desktop uses Wayland; explicitly selecting
+        # it avoids an X11/xcb conflict introduced by the venv's OpenCV package.
+        os.environ.setdefault("QT_QPA_PLATFORM", "wayland")
+        camera.start_preview(
+            Preview.QTGL if LOCAL_PREVIEW == "qtgl" else Preview.QT,
+            x=0, y=0, width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
+        )
+        print(f"Local touchscreen camera preview started ({LOCAL_PREVIEW}).")
     camera.start()
     pose = mp.solutions.pose.Pose(
         static_image_mode=False, model_complexity=0, enable_segmentation=False,
         min_detection_confidence=0.6, min_tracking_confidence=0.6,
     )
-    next_live_frame = next_snapshot = 0.0
+    next_live_frame = next_snapshot = next_overlay = 0.0
     try:
         while True:
             frame = camera.capture_array()
             result = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             now = time.monotonic()
+            if LOCAL_PREVIEW != "off" and now >= next_overlay:
+                camera.set_overlay(local_pose_overlay(result, frame_width, frame_height))
+                next_overlay = now + LOCAL_OVERLAY_INTERVAL_SECONDS
             jpeg: bytes | None = None
             if now >= next_live_frame or now >= next_snapshot:
                 jpeg = annotated_jpeg(frame, result)
@@ -156,6 +205,8 @@ def main() -> None:
     finally:
         pose.close()
         camera.stop()
+        if LOCAL_PREVIEW != "off":
+            camera.stop_preview()
 
 
 if __name__ == "__main__":

@@ -26,7 +26,27 @@ aside {
 .muted, header, footer { color: #6d796e; font-size: 12px; }
 nav { display: grid; gap: 12px; margin-top: 42px; }
 nav a { padding: 10px; border-radius: 8px; }
-nav a:hover { background: #eef2e7; }
+nav a:hover { background: #eef2e7; text-decoration: none; }
+nav a.is-active {
+  position: relative;
+  background: #284b36;
+  color: #fffefa;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 5px 12px rgb(40 75 54 / 16%);
+}
+nav a.is-active::before {
+  position: absolute;
+  top: 50%;
+  left: -10px;
+  width: 4px;
+  height: 24px;
+  border-radius: 999px;
+  background: #a7c47c;
+  content: "";
+  transform: translateY(-50%);
+}
+nav a.is-active:hover { background: #1e3c2a; }
 .aside-note { margin-top: 64px; color: #76846b; }
 
 main { margin-left: 240px; max-width: 1500px; padding: 28px 48px; }

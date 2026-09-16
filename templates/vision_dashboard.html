@@ -77,22 +77,20 @@
         const placeholder = document.getElementById("vision-live-placeholder");
         const status = document.getElementById("vision-status");
         const refresh = () => {
-          const probe = new Image();
-          probe.onload = () => {
-            image.src = `${image.dataset.url}?t=${Date.now()}`;
-            image.hidden = false;
-            placeholder.hidden = true;
-            status.textContent = "Live camera connected";
-          };
-          probe.onerror = () => {
-            image.hidden = true;
-            placeholder.hidden = false;
-            status.textContent = "Waiting for a frame from your Pi…";
-          };
-          probe.src = `${image.dataset.url}?t=${Date.now()}`;
+          image.src = `${image.dataset.url}?t=${Date.now()}`;
+        };
+        image.onload = () => {
+          image.hidden = false;
+          placeholder.hidden = true;
+          status.textContent = "Live camera connected";
+        };
+        image.onerror = () => {
+          image.hidden = true;
+          placeholder.hidden = false;
+          status.textContent = "Waiting for a frame from your Pi…";
         };
         refresh();
-        window.setInterval(refresh, 1000);
+        window.setInterval(refresh, 200);
       })();
     </script>
   {% endif %}
