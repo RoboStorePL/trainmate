@@ -290,7 +290,7 @@ class TrainMateTests(TestCase):
         self.assertEqual(accrual.amount, 10)
         self.assertEqual(accrual.status, SalaryAccrual.Status.READY)
 
-    def test_only_admin_can_confirm_session_and_salary(self) -> None:
+    def test_admin_or_assigned_trainer_can_confirm_session_and_salary(self) -> None:
         self.client.post(reverse("training:book", args=[self.session.pk]))
         self.assertEqual(
             self.client.post(
@@ -298,6 +298,25 @@ class TrainMateTests(TestCase):
             ).status_code,
             403,
         )
+        trainer_user = get_user_model().objects.create_user(
+            username="assigned-trainer", role="trainer",
+        )
+        self.trainer.user = trainer_user
+        self.trainer.save()
+        self.client.force_login(trainer_user)
+        response = self.client.post(
+            reverse("training:session-complete", args=[self.session.pk]),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, TrainingSession.Status.COMPLETED)
+        self.assertEqual(
+            SalaryAccrual.objects.get(session=self.session).status,
+            SalaryAccrual.Status.READY,
+        )
+
+    def test_admin_can_confirm_session_and_salary(self) -> None:
+        self.client.post(reverse("training:book", args=[self.session.pk]))
         admin = get_user_model().objects.create_superuser(
             username="Mixon", password="test-password",
         )
@@ -315,6 +334,16 @@ class TrainMateTests(TestCase):
         self.assertIsNotNone(
             SalaryAccrual.objects.get(session=self.session).confirmed_at,
         )
+
+    def test_session_manager_sees_confirm_button_for_scheduled_session(self) -> None:
+        admin = get_user_model().objects.create_superuser(
+            username="Mixon", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse("training:session-detail", args=[self.session.pk]),
+        )
+        self.assertContains(response, "Confirm session")
 
     def test_trainer_cannot_complete_their_session_through_the_edit_form(self) -> None:
         trainer_user = get_user_model().objects.create_user(

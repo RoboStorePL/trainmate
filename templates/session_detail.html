@@ -8,6 +8,12 @@
     {% else %}
       <form method="post" action="{% url 'training:book' object.pk %}">{% csrf_token %}<button>Book my place ↗</button></form>
     {% endif %}
+    {% if can_manage_session and object.status == "scheduled" %}
+      <form class="confirm-session-form" method="post" action="{% url 'training:session-complete' object.pk %}">{% csrf_token %}
+        <button>Confirm session</button>
+        <p class="muted">Marks the session as completed and prepares its payout.</p>
+      </form>
+    {% endif %}
     {% if can_manage_session %}<div class="actions"><a href="{% url 'training:session-update' object.pk %}">Edit session</a><a href="{% url 'training:session-delete' object.pk %}">Delete session</a></div>{% endif %}
   </article>
   {% if can_manage_session %}

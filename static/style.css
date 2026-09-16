@@ -134,6 +134,8 @@ h3 { font-size: 20px; }
 .search div { display: flex; gap: 12px; }
 .search input { max-width: 550px; }
 .actions { display: flex; gap: 24px; margin-top: 24px; color: #5b7850; }
+.confirm-session-form { margin-top: 20px; }
+.confirm-session-form .muted { margin: 8px 0 0; }
 .form-panel, .detail { max-width: 720px; }
 
 input,

@@ -12,6 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
+from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
@@ -608,8 +609,9 @@ class TrainerEarnings(LoginRequiredMixin, UserPassesTestMixin, generic.ListView)
         context["paid_total"] = accruals.filter(
             status=SalaryAccrual.Status.PAID,
         ).aggregate(total=Sum("amount"))["total"] or 0
-        context["outstanding_total"] = context["hold_total"] + context["confirmed_total"]
+        context["outstanding_total"] = context["confirmed_total"]
         context["total_earned"] = context["outstanding_total"] + context["paid_total"]
+        context["payouts"] = TrainerPayout.objects.filter(trainer=self.request.user.trainer_profile).select_related("recorded_by", "trainer")
         return context
 
 
@@ -630,7 +632,7 @@ class PayoutList(AdminRequiredMixin, generic.ListView):
             paid_total=Sum("amount", filter=Q(status=SalaryAccrual.Status.PAID)),
         )
         context.update({key: value or 0 for key, value in totals.items()})
-        context["outstanding_total"] = context["accrued_total"] + context["ready_total"]
+        context["outstanding_total"] = context["ready_total"]
 
         trainer_totals = Trainer.objects.filter(accruals__isnull=False).annotate(
             session_count=Count("accruals"),
@@ -651,9 +653,10 @@ class PayoutList(AdminRequiredMixin, generic.ListView):
             trainer.accrued_total = trainer.accrued_total or 0
             trainer.ready_total = trainer.ready_total or 0
             trainer.paid_total = trainer.paid_total or 0
-            trainer.outstanding_total = trainer.accrued_total + trainer.ready_total
+            trainer.outstanding_total = trainer.ready_total
             trainer.total_earned = trainer.outstanding_total + trainer.paid_total
         context["trainer_totals"] = trainer_totals
+        context["payouts"] = TrainerPayout.objects.select_related("trainer", "recorded_by").prefetch_related("accruals")
         return context
 
 
@@ -666,34 +669,59 @@ class TrainerPayoutCreate(AdminRequiredMixin, generic.FormView):
         return get_object_or_404(Trainer, pk=self.kwargs["trainer_pk"])
 
     def get_ready_accruals(self) -> QuerySet[SalaryAccrual]:
-        return SalaryAccrual.objects.filter(
+        records = SalaryAccrual.objects.filter(
             trainer=self.get_trainer(), status=SalaryAccrual.Status.READY,
-            payout__isnull=True,
+            payout__isnull=True, amount__gt=0,
         ).select_related("session").order_by("session__starts_at", "pk")
+        values = self.request.POST if self.request.method == "POST" else self.request.GET
+        try:
+            start = date.fromisoformat(values["starts_on"]) if values.get("starts_on") else None
+            end = date.fromisoformat(values["ends_on"]) if values.get("ends_on") else None
+        except ValueError:
+            return records.none()
+        if start and end and start > end:
+            return records.none()
+        if start:
+            records = records.filter(session__starts_at__date__gte=start)
+        if end:
+            records = records.filter(session__starts_at__date__lte=end)
+        return records
+
+    def get_initial(self):
+        return {"starts_on": self.request.GET.get("starts_on", ""), "ends_on": self.request.GET.get("ends_on", ""), "method": "transfer"}
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        ready_accruals = self.get_ready_accruals()
+        ready_accruals = list(self.get_ready_accruals())
+        context["form"].initial["selection"] = signing.dumps(
+            [(record.pk, str(record.amount)) for record in ready_accruals], salt="payout-selection",
+        )
         context.update({
             "trainer": self.get_trainer(),
             "ready_accruals": ready_accruals,
-            "payout_amount": ready_accruals.aggregate(total=Sum("amount"))["total"] or 0,
+            "payout_amount": sum((record.amount for record in ready_accruals), Decimal("0.00")),
         })
         return context
 
     def form_valid(self, form: TrainerPayoutForm) -> HttpResponse:
         trainer = self.get_trainer()
         with transaction.atomic():
-            ready_accruals = list(SalaryAccrual.objects.select_for_update().filter(
-                trainer=trainer, status=SalaryAccrual.Status.READY,
-                payout__isnull=True,
-            ).select_related("session").order_by("session__starts_at", "pk"))
+            Trainer.objects.select_for_update().get(pk=trainer.pk)
+            ready_accruals = list(self.get_ready_accruals().select_for_update())
+            try:
+                selection = signing.loads(form.cleaned_data["selection"], salt="payout-selection", max_age=3600)
+            except signing.BadSignature:
+                selection = None
+            if selection != [[record.pk, str(record.amount)] for record in ready_accruals]:
+                form.add_error(None, "The selection changed or expired. Reload this page to review the payment again.")
+                return self.form_invalid(form)
             if not ready_accruals:
                 form.add_error(None, "There are no ready salary records left to pay.")
                 return self.form_invalid(form)
             amount = sum((accrual.amount for accrual in ready_accruals), Decimal("0.00"))
             payout = TrainerPayout.objects.create(
                 trainer=trainer, amount=amount, note=form.cleaned_data["note"],
+                method=form.cleaned_data["method"], recorded_by=self.request.user,
             )
             for accrual in ready_accruals:
                 accrual.status = SalaryAccrual.Status.PAID
@@ -701,9 +729,20 @@ class TrainerPayoutCreate(AdminRequiredMixin, generic.FormView):
                 accrual.save(update_fields=["status", "payout"])
         messages.success(
             self.request,
-            f"Paid {amount} PLN to {trainer.name} for {len(ready_accruals)} sessions.",
+            f"Recorded a payment of {amount} PLN to {trainer.name} for {len(ready_accruals)} sessions.",
         )
         return super().form_valid(form)
+
+
+class TrainerPayoutDetail(LoginRequiredMixin, generic.DetailView):
+    model = TrainerPayout
+    template_name = "trainer_payout_detail.html"
+
+    def get_queryset(self):
+        records = TrainerPayout.objects.select_related("trainer", "recorded_by").prefetch_related("accruals__session__completed_by")
+        if not self.request.user.is_superuser:
+            records = records.filter(trainer__user=self.request.user)
+        return records
 
 
 @login_required
@@ -1010,18 +1049,36 @@ class Profile(EditorMixin, generic.UpdateView):
 
 
 @login_required
-@require_POST
 def complete_session(request: HttpRequest, pk: int) -> HttpResponse:
-    if not request.user.is_superuser:
-        raise PermissionDenied
     with transaction.atomic():
         session = get_object_or_404(
             TrainingSession.objects.select_for_update(), pk=pk,
         )
+        is_session_trainer = session.trainer.user_id == request.user.pk
+        if not request.user.is_superuser and not is_session_trainer:
+            raise PermissionDenied
+        if request.method not in {"GET", "POST"}:
+            return HttpResponse(status=405)
+        attended = session.attendance_records.filter(status=SessionAttendance.Status.ATTENDED, user__in=session.participants.all()).count()
+        snapshot = [session.pk, attended, str(session.trainer.rate_per_participant)]
+        if request.method == "GET":
+            return render(request, "session_confirm.html", {
+                "session": session, "attended": attended,
+                "amount": attended * session.trainer.rate_per_participant,
+                "selection": signing.dumps(snapshot, salt="session-confirm"),
+            })
         if session.status == TrainingSession.Status.COMPLETED:
             messages.info(request, "This session is already completed.")
         else:
+            try:
+                reviewed = signing.loads(request.POST.get("selection", ""), salt="session-confirm", max_age=3600)
+            except signing.BadSignature:
+                reviewed = None
+            if reviewed != snapshot:
+                messages.error(request, "Attendance or rate changed. Review the calculation again.")
+                return redirect("training:session-complete", pk=pk)
             session.status = TrainingSession.Status.COMPLETED
+            session.completed_by = request.user
             session.save()
             messages.success(request, "Session confirmed and salary accrual updated.")
     return redirect("training:session-list")
