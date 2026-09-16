@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.db.models import Q
 
-from .models import Trainer, TrainingSession, User
+from .models import RecurringSchedule, Trainer, TrainingSession, User
 
 
 class SignUpForm(UserCreationForm):
@@ -63,6 +63,39 @@ class TrainerSessionForm(SessionForm):
         fields = (
             "title", "description", "specialization", "starts_at",
             "duration_minutes", "capacity", "location",
+        )
+
+
+class RecurringScheduleForm(forms.ModelForm):
+    weekdays = forms.MultipleChoiceField(
+        choices=RecurringSchedule.DAYS_OF_WEEK,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="TrainMate creates bookable sessions only for the next three weeks.",
+    )
+
+    class Meta:
+        model = RecurringSchedule
+        exclude = ()
+        widgets = {
+            "start_time": forms.TimeInput(attrs={"type": "time"}),
+            "starts_on": forms.DateInput(attrs={"type": "date"}),
+            "ends_on": forms.DateInput(attrs={"type": "date"}),
+        }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.initial["weekdays"] = [str(day) for day in self.instance.weekdays]
+
+    def clean_weekdays(self) -> list[int]:
+        return [int(day) for day in self.cleaned_data["weekdays"]]
+
+
+class TrainerRecurringScheduleForm(RecurringScheduleForm):
+    class Meta(RecurringScheduleForm.Meta):
+        fields = (
+            "title", "description", "specialization", "weekdays", "start_time",
+            "duration_minutes", "capacity", "location", "starts_on", "ends_on",
+            "is_active",
         )
 
 

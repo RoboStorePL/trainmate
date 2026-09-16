@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import time, timedelta
 from decimal import Decimal
 import json
 from tempfile import TemporaryDirectory
@@ -16,7 +16,8 @@ from django.utils.http import urlsafe_base64_encode
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
-    Specialization, Trainer, TrainingSession, VisionAnalysis, VisionDevice,
+    RecurringSchedule, Specialization, Trainer, TrainingSession, VisionAnalysis,
+    VisionDevice,
 )
 
 
@@ -50,6 +51,29 @@ class TrainMateTests(TestCase):
                 self.assertEqual(self.client.get(
                     reverse(f"training:{name}"),
                 ).status_code, 200)
+
+    def test_regular_schedule_creates_only_three_weeks_of_bookable_sessions(self) -> None:
+        today = timezone.localdate()
+        first_date = today + timedelta(days=1)
+        schedule = RecurringSchedule.objects.create(
+            title="Weekly yoga", trainer=self.trainer, specialization=self.discipline,
+            weekdays=[first_date.weekday()], start_time=time(12, 0),
+            duration_minutes=60, capacity=5, location="Studio", starts_on=first_date,
+        )
+
+        self.assertEqual(schedule.sync_sessions(), 3)
+        self.assertEqual(schedule.sync_sessions(), 0)
+        sessions = list(schedule.sessions.order_by("starts_at"))
+        self.assertEqual(len(sessions), 3)
+        self.assertTrue(all(session.recurring_schedule_id == schedule.pk for session in sessions))
+        self.assertTrue(all(
+            timezone.localtime(session.starts_at).date() <= today + timedelta(days=20)
+            for session in sessions
+        ))
+
+        response = self.client.post(reverse("training:book", args=[sessions[0].pk]))
+        self.assertRedirects(response, sessions[0].get_absolute_url())
+        self.assertTrue(sessions[0].participants.filter(pk=self.user.pk).exists())
 
     def test_vision_device_can_submit_pose_result_for_its_owner(self) -> None:
         device = VisionDevice(name="test-pi", owner=self.user)

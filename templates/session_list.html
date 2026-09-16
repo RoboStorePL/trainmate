@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row">
+    <div><h1>Training sessions</h1><p class="muted">Book a specific class, whether it comes from a regular schedule or is one-time.</p></div>
+    {% if can_create_session %}<div class="title-actions"><a class="secondary button" href="{% url 'training:recurring-schedule-list' %}">Regular schedules</a><a class="button" href="{% url 'training:session-create' %}">+ One-time session</a></div>{% endif %}
+  </div>
+  <form class="search" method="get"><input type="hidden" name="week" value="{{ week_start|date:'Y-m-d' }}"><label for="search">Find a class this week</label><div><input id="search" name="q" value="{{ query }}" placeholder="Search by name…"><button>Search</button></div></form>
+
+  <div class="calendar-heading">
+    <a class="calendar-nav" href="?week={{ previous_week|date:'Y-m-d' }}{% if query %}&q={{ query|urlencode }}{% endif %}">← Previous week</a>
+    <h2>{{ week_start|date:"d M" }} – {{ week_end|date:"d M Y" }}</h2>
+    <a class="calendar-nav" href="?week={{ next_week|date:'Y-m-d' }}{% if query %}&q={{ query|urlencode }}{% endif %}">Next week →</a>
+  </div>
+
+  <section class="week-calendar" aria-label="Weekly training schedule">
+    {% for day in days %}
+      <div class="calendar-day{% if day.date == today %} is-today{% endif %}">
+        <h3>{{ day.date|date:"D" }} <span>{{ day.date|date:"d M" }}</span></h3>
+        <div class="calendar-slots">
+          {% for session in day.sessions %}
+            <a class="calendar-session" href="{{ session.get_absolute_url }}">
+              <time>{{ session.starts_at|date:"H:i" }}</time>
+              <strong>{{ session.title }}</strong>
+              <span>{{ session.trainer }} · {{ session.duration_minutes }} min</span>
+              <small>{{ session.participants.count }} / {{ session.capacity }} booked</small>
+            </a>
+          {% empty %}<p class="calendar-empty">No sessions</p>{% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </section>
+{% endblock %}

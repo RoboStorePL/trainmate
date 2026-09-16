@@ -21,6 +21,9 @@ Demo client:
 
 - **Session booking** — browse, search, create, confirm, cancel and complete
   training sessions with server-side capacity and duplicate-booking checks.
+- **Weekly scheduling** — trainers create one-time sessions or regular weekly
+  rules; active rules materialize bookable sessions only for the next three
+  weeks, shown in a calendar view.
 - **Roles and workspaces** — client, trainer and administrator permissions;
   trainers can manage only their own sessions and see their own earnings.
 - **Memberships** — demo PLN balance, plans with a visit limit and validity

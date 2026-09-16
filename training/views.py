@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
@@ -30,12 +30,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
-    BalanceAdjustmentForm, ProfileForm, SessionForm, SignUpForm, TrainerForm,
-    TrainerSessionForm,
+    BalanceAdjustmentForm, ProfileForm, RecurringScheduleForm, SessionForm,
+    SignUpForm, TrainerForm, TrainerRecurringScheduleForm, TrainerSessionForm,
 )
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
-    SalaryAccrual, Specialization, Trainer, TrainingSession, User,
+    RecurringSchedule, SalaryAccrual, Specialization, Trainer, TrainingSession, User,
     VisionAnalysis, VisionDevice,
 )
 
@@ -138,10 +138,58 @@ class SearchList(LoginRequiredMixin, generic.ListView):
 
 class SessionList(SearchList):
     model = TrainingSession
-    queryset = TrainingSession.objects.select_related("trainer", "specialization")
+    template_name = "session_list.html"
+    queryset = TrainingSession.objects.select_related("trainer", "specialization").prefetch_related("participants")
+    # A week rarely contains this many slots, while pagination remains available for search results.
+    paginate_by = 100
     search_field = "title"
     kind = "session"
     title = "Training sessions"
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        # Keeps each active schedule filled without a background worker.
+        for schedule in RecurringSchedule.objects.filter(is_active=True):
+            schedule.sync_sessions()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_week_start(self) -> date:
+        raw_week = self.request.GET.get("week", "")
+        try:
+            chosen_day = date.fromisoformat(raw_week) if raw_week else timezone.localdate()
+        except ValueError:
+            chosen_day = timezone.localdate()
+        return chosen_day - timedelta(days=chosen_day.weekday())
+
+    def get_queryset(self) -> QuerySet[TrainingSession]:
+        week_start = self.get_week_start()
+        week_end = week_start + timedelta(days=7)
+        queryset = self.queryset.filter(starts_at__date__gte=week_start, starts_at__date__lt=week_end)
+        query = self.request.GET.get("q", "").strip()
+        if query:
+            queryset = queryset.filter(title__icontains=query)
+        return queryset
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        week_start = self.get_week_start()
+        sessions = list(context["object_list"])
+        days = []
+        for offset in range(7):
+            day = week_start + timedelta(days=offset)
+            days.append({
+                "date": day,
+                "sessions": [session for session in sessions if timezone.localtime(session.starts_at).date() == day],
+            })
+        context.update({
+            "week_start": week_start,
+            "week_end": week_start + timedelta(days=6),
+            "previous_week": week_start - timedelta(days=7),
+            "next_week": week_start + timedelta(days=7),
+            "days": days,
+            "today": timezone.localdate(),
+            "can_manage_schedules": context["can_create_session"],
+        })
+        return context
 
 
 class TrainerList(SearchList):
@@ -544,12 +592,86 @@ class TrainerSessionMixin(EditorMixin, UserPassesTestMixin):
 class SessionCreate(TrainerSessionMixin, generic.CreateView):
     model = TrainingSession
 
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context.update({"form_title": "Create one-time session", "back_url": reverse_lazy("training:session-list")})
+        return context
+
 
 class SessionUpdate(TrainerSessionMixin, generic.UpdateView):
     model = TrainingSession
 
     def get_queryset(self) -> QuerySet[TrainingSession]:
         return super().get_queryset().filter(status=TrainingSession.Status.SCHEDULED)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context.update({"form_title": "Edit session", "back_url": reverse_lazy("training:session-list")})
+        return context
+
+
+class RecurringScheduleMixin(EditorMixin, UserPassesTestMixin):
+    trainer = None
+
+    def test_func(self) -> bool:
+        return self.request.user.is_superuser or is_trainer(self.request.user)
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if not request.user.is_superuser:
+            if not is_trainer(request.user):
+                raise PermissionDenied
+            self.trainer = request.user.trainer_profile
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_class(self) -> type[RecurringScheduleForm]:
+        return RecurringScheduleForm if self.request.user.is_superuser else TrainerRecurringScheduleForm
+
+    def get_form(self, form_class: type[RecurringScheduleForm] | None = None) -> RecurringScheduleForm:
+        form = super().get_form(form_class)
+        if self.trainer:
+            form.instance.trainer = self.trainer
+            form.fields["specialization"].queryset = self.trainer.specializations.all()
+        return form
+
+    def get_queryset(self) -> QuerySet[RecurringSchedule]:
+        queryset = super().get_queryset()
+        return queryset if self.request.user.is_superuser else queryset.filter(trainer=self.trainer)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context.update({
+            "form_title": "Edit regular schedule" if self.object else "Create regular schedule",
+            "back_url": reverse_lazy("training:recurring-schedule-list"),
+        })
+        return context
+
+
+class RecurringScheduleList(RecurringScheduleMixin, generic.ListView):
+    model = RecurringSchedule
+    template_name = "recurring_schedule_list.html"
+    context_object_name = "schedules"
+
+
+class RecurringScheduleCreate(RecurringScheduleMixin, generic.CreateView):
+    model = RecurringSchedule
+    success_url = reverse_lazy("training:recurring-schedule-list")
+
+    def form_valid(self, form: RecurringScheduleForm) -> HttpResponse:
+        response = super().form_valid(form)
+        count = self.object.sync_sessions(refresh=True)
+        messages.success(self.request, f"Regular schedule saved. {count} sessions were created for the next three weeks.")
+        return response
+
+
+class RecurringScheduleUpdate(RecurringScheduleMixin, generic.UpdateView):
+    model = RecurringSchedule
+    success_url = reverse_lazy("training:recurring-schedule-list")
+
+    def form_valid(self, form: RecurringScheduleForm) -> HttpResponse:
+        response = super().form_valid(form)
+        count = self.object.sync_sessions(refresh=True)
+        messages.success(self.request, f"Regular schedule updated. {count} unbooked future sessions were refreshed.")
+        return response
 
 
 class SafeDelete(LoginRequiredMixin, generic.DeleteView):
@@ -585,6 +707,14 @@ class SessionDelete(TrainerSessionMixin, SafeDelete):
             )
             return redirect("training:session-list")
         return super().form_valid(form)
+
+
+class RecurringScheduleDelete(RecurringScheduleMixin, SafeDelete):
+    model = RecurringSchedule
+    success_url = reverse_lazy("training:recurring-schedule-list")
+
+    def get_form_class(self) -> type[django_forms.Form]:
+        return django_forms.Form
 
 
 class TrainerCreate(AdminRequiredMixin, generic.CreateView):

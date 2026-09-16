@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
-    SalaryAccrual, Specialization, Trainer, TrainingSession, User,
+    RecurringSchedule, SalaryAccrual, Specialization, Trainer, TrainingSession, User,
     VisionAnalysis, VisionDevice,
 )
 
@@ -71,6 +71,13 @@ class SalaryAccrualAdmin(admin.ModelAdmin):
         self, request: HttpRequest, obj: object | None = None,
     ) -> bool:
         return False
+
+
+@admin.register(RecurringSchedule)
+class RecurringScheduleAdmin(admin.ModelAdmin):
+    list_display = ("title", "trainer", "start_time", "starts_on", "ends_on", "is_active")
+    list_filter = ("is_active", "specialization")
+    search_fields = ("title", "trainer__name")
 
 
 admin.site.register([MembershipUsage, Specialization, TrainingSession])
