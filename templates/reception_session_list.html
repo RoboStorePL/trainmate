@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="reception-intro"><span class="tag">RECEPTION MODE</span><h1>Today’s sessions</h1><p>Select a session, then let each booked client tap <strong>I’m here</strong>.</p></section>
+  <div class="reception-session-grid">
+    {% for session in sessions %}
+      <a class="reception-session-card" href="{% url 'training:reception-check-in' session.pk %}"><time>{{ session.starts_at|date:"H:i" }}</time><h2>{{ session.title }}</h2><p>{{ session.trainer }} · {{ session.location }}</p><span>{{ session.participants.count }} booked →</span></a>
+    {% empty %}<article><h2>No sessions today</h2><p>Choose a different day in the main schedule or add a session.</p></article>{% endfor %}
+  </div>
+{% endblock %}

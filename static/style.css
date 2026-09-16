@@ -172,6 +172,31 @@ tbody tr:last-child td { border-bottom: 0; }
 .status-accrued { background: #f7ead0; color: #825f20; }
 .status-ready { background: #dcebd3; color: #3f6a32; }
 .status-paid { background: #d9eaf3; color: #285c76; }
+.status-booked { background: #eef0ea; color: #596d5a; }
+.status-attended { background: #dcebd3; color: #3f6a32; }
+.status-absent { background: #f7ead0; color: #825f20; }
+.attendance-panel { max-width: 720px; margin-top: 24px; }
+.attendance-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid #e5e9e1; }
+.attendance-row > div { display: flex; align-items: center; gap: 10px; }
+.attendance-row form { display: flex; gap: 8px; align-items: center; }
+.attendance-row select { width: auto; padding: 8px; }
+.attendance-row button { padding: 8px 12px; }
+.reception-intro { margin-bottom: 26px; }
+.reception-intro h1 { margin: 6px 0; }
+.reception-session-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+.reception-session-card { display: block; padding: 26px; border: 1px solid #d9dfd3; border-radius: 16px; background: #fffefa; box-shadow: 0 8px 24px rgb(33 54 43 / 6%); }
+.reception-session-card:hover { border-color: #799a6c; background: #f4f8ee; text-decoration: none; }
+.reception-session-card time { color: #527149; font-size: 20px; font-weight: 850; }
+.reception-session-card h2 { margin: 6px 0; }
+.reception-session-card span { color: #527149; font-weight: 750; }
+.check-in-panel { max-width: 850px; padding: 28px; border: 1px solid #d9dfd3; border-radius: 18px; background: #e6ecdd; }
+.check-in-panel h2 { margin: 0; }
+.check-in-list { display: grid; gap: 12px; margin-top: 22px; }
+.check-in-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px; border: 1px solid #d9dfd3; border-radius: 12px; background: #fffefa; }
+.check-in-row h3, .check-in-row p { margin: 0; }
+.check-in-row p { color: #6d796e; font-size: 13px; }
+.check-in-button { min-width: 140px; min-height: 54px; font-size: 18px; font-weight: 750; }
+.checked-in { padding: 14px 16px; border-radius: 9px; background: #dcebd3; color: #3f6a32; font-weight: 800; }
 .table-action { display: inline-block; padding: 7px 12px; border: 1px solid #76916e; border-radius: 7px; color: #365c3b; font-size: 13px; font-weight: 700; }
 .table-action:hover { background: #e9f0e4; text-decoration: none; }
 .calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 28px 0 14px; }
@@ -218,5 +243,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .title-row h1 { font-size: 30px; }
   .calendar-heading { align-items: flex-start; }
   .calendar-heading h2 { font-size: 16px; }
+  .attendance-row, .check-in-row { align-items: flex-start; flex-direction: column; }
+  .attendance-row form { width: 100%; }
+  .check-in-button { width: 100%; }
   .vision-live-panel { grid-template-columns: 1fr; }
 }

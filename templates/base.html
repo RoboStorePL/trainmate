@@ -9,6 +9,11 @@
 </head>
 <body>
   <aside>
+    {% if user.is_authenticated and user.role == "kiosk" %}
+      <a class="brand" href="{% url 'training:reception-session-list' %}">Train<span>Mate</span></a>
+      <p class="muted">RECEPTION CHECK-IN</p>
+      <nav aria-label="Reception navigation"><a class="nav-link{% if request.resolver_match.url_name == 'reception-session-list' or request.resolver_match.url_name == 'reception-check-in' %} is-active{% endif %}" href="{% url 'training:reception-session-list' %}">Today’s sessions</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="secondary">Lock kiosk</button></form></nav>
+    {% else %}
     <a class="brand" href="/">Train<span>Mate</span></a>
     <p class="muted">MAKE MOVEMENT A HABIT</p>
     <nav aria-label="Primary navigation">
@@ -25,6 +30,7 @@
           <a class="nav-link{% if request.resolver_match.url_name == 'payout-list' %} is-active{% endif %}" href="{% url 'training:payout-list' %}"{% if request.resolver_match.url_name == 'payout-list' %} aria-current="page"{% endif %}>Payouts</a>
           <a class="nav-link{% if request.path|slice:':7' == '/admin/' %} is-active{% endif %}" href="/admin/"{% if request.path|slice:':7' == '/admin/' %} aria-current="page"{% endif %}>Admin panel</a>
         {% endif %}
+        {% if user.is_superuser or user.role == "trainer" %}<a class="nav-link{% if request.resolver_match.url_name == 'reception-session-list' or request.resolver_match.url_name == 'reception-check-in' %} is-active{% endif %}" href="{% url 'training:reception-session-list' %}">Reception</a>{% endif %}
         <a class="nav-link{% if request.resolver_match.url_name == 'profile' %} is-active{% endif %}" href="{% url 'training:profile' %}"{% if request.resolver_match.url_name == 'profile' %} aria-current="page"{% endif %}>{{ user.username }} · Profile</a>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}<button class="secondary">Log out</button>
@@ -35,6 +41,7 @@
       {% endif %}
     </nav>
     <p class="aside-note">A little movement.<br>A better every day.</p>
+    {% endif %}
   </aside>
   <main>
     <header><span>YOUR SPACE TO MOVE</span><span>Fitness / Recovery / Jiu-jitsu / Yoga</span></header>

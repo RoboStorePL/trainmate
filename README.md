@@ -24,6 +24,9 @@ Demo client:
 - **Weekly scheduling** — trainers create one-time sessions or regular weekly
   rules; active rules materialize bookable sessions only for the next three
   weeks, shown in a calendar view.
+- **Reception check-in** — a restricted kiosk account selects today’s session;
+  booked clients tap “I’m here” to record attendance, while trainers and
+  administrators can correct an attendance status.
 - **Roles and workspaces** — client, trainer and administrator permissions;
   trainers can manage only their own sessions and see their own earnings.
 - **Memberships** — demo PLN balance, plans with a visit limit and validity
@@ -175,6 +178,11 @@ web service; it deliberately does not contain database credentials.
    creates a low-privilege demonstration client with username `user` and the
    password configured in `DEMO_PASSWORD`, plus the administrator configured
    through `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+
+To enable the optional tablet reception mode, set `KIOSK_USERNAME` and
+`KIOSK_PASSWORD` in Render. The build creates a restricted kiosk account which
+opens only `/reception/`; it can check in clients who are already booked for a
+selected session.
 
 Never commit `.env` or a Neon connection string. Locally, place the connection
 string in `.env` as `DATABASE_URL=postgresql://...`; Django reads it through

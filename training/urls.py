@@ -19,6 +19,9 @@ urlpatterns = [
     path("vision/analyses/<int:pk>/snapshot/", views.vision_snapshot, name="vision-snapshot-view"),
     path("earnings/", views.TrainerEarnings.as_view(), name="trainer-earnings"),
     path("payouts/", views.PayoutList.as_view(), name="payout-list"),
+    path("reception/", views.ReceptionSessionList.as_view(), name="reception-session-list"),
+    path("reception/sessions/<int:pk>/", views.ReceptionCheckIn.as_view(), name="reception-check-in"),
+    path("reception/sessions/<int:session_pk>/clients/<int:user_pk>/check-in/", views.kiosk_check_in, name="kiosk-check-in"),
     path("sessions/", views.SessionList.as_view(), name="session-list"),
     path("sessions/create/", views.SessionCreate.as_view(), name="session-create"),
     path("schedules/", views.RecurringScheduleList.as_view(), name="recurring-schedule-list"),
@@ -41,4 +44,5 @@ urlpatterns = [
     path("sessions/<int:pk>/", views.SessionDetail.as_view(), name="session-detail"),
     path("sessions/<int:pk>/book/", views.book, name="book"),
     path("sessions/<int:pk>/cancel/", views.cancel, name="cancel"),
+    path("sessions/<int:session_pk>/attendance/<int:user_pk>/", views.update_attendance, name="attendance-update"),
 ]

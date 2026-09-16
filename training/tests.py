@@ -16,8 +16,8 @@ from django.utils.http import urlsafe_base64_encode
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
-    RecurringSchedule, Specialization, Trainer, TrainingSession, VisionAnalysis,
-    VisionDevice,
+    RecurringSchedule, SessionAttendance, Specialization, Trainer, TrainingSession,
+    VisionAnalysis, VisionDevice,
 )
 
 
@@ -74,6 +74,45 @@ class TrainMateTests(TestCase):
         response = self.client.post(reverse("training:book", args=[sessions[0].pk]))
         self.assertRedirects(response, sessions[0].get_absolute_url())
         self.assertTrue(sessions[0].participants.filter(pk=self.user.pk).exists())
+
+    def test_reception_kiosk_checks_in_a_booked_client(self) -> None:
+        kiosk = get_user_model().objects.create_user(
+            username="reception", password="tablet-password", role="kiosk",
+        )
+        today_session = TrainingSession.objects.create(
+            title="Evening yoga", trainer=self.trainer, specialization=self.discipline,
+            starts_at=timezone.now(), location="Studio",
+        )
+        today_session.participants.add(self.user)
+        self.client.force_login(kiosk)
+
+        response = self.client.get(reverse("training:reception-session-list"))
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reverse("training:kiosk-check-in", args=[today_session.pk, self.user.pk]),
+        )
+        self.assertRedirects(response, reverse("training:reception-check-in", args=[today_session.pk]))
+        self.assertEqual(
+            SessionAttendance.objects.get(session=today_session, user=self.user).status,
+            SessionAttendance.Status.ATTENDED,
+        )
+        self.assertRedirects(self.client.get(reverse("training:home")), reverse("training:reception-session-list"))
+
+    def test_manager_can_correct_attendance(self) -> None:
+        self.session.participants.add(self.user)
+        admin = get_user_model().objects.create_superuser(
+            username="attendance-admin", password="test-password",
+        )
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse("training:attendance-update", args=[self.session.pk, self.user.pk]),
+            {"status": "absent"},
+        )
+        self.assertRedirects(response, self.session.get_absolute_url())
+        self.assertEqual(
+            SessionAttendance.objects.get(session=self.session, user=self.user).status,
+            SessionAttendance.Status.ABSENT,
+        )
 
     def test_vision_device_can_submit_pose_result_for_its_owner(self) -> None:
         device = VisionDevice(name="test-pi", owner=self.user)

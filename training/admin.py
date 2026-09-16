@@ -4,7 +4,8 @@ from django.http import HttpRequest
 
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, MembershipUsage,
-    RecurringSchedule, SalaryAccrual, Specialization, Trainer, TrainingSession, User,
+    RecurringSchedule, SalaryAccrual, SessionAttendance, Specialization, Trainer,
+    TrainingSession, User,
     VisionAnalysis, VisionDevice,
 )
 
@@ -81,6 +82,14 @@ class RecurringScheduleAdmin(admin.ModelAdmin):
 
 
 admin.site.register([MembershipUsage, Specialization, TrainingSession])
+
+
+@admin.register(SessionAttendance)
+class SessionAttendanceAdmin(admin.ModelAdmin):
+    list_display = ("session", "user", "status", "checked_in_at", "updated_at")
+    list_filter = ("status",)
+    search_fields = ("session__title", "user__username")
+    list_select_related = ("session", "user")
 
 
 @admin.register(VisionDevice)

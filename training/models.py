@@ -17,6 +17,7 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         CLIENT = "client", "Client"
         TRAINER = "trainer", "Trainer"
+        KIOSK = "kiosk", "Reception kiosk"
 
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.CLIENT)
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
@@ -154,6 +155,33 @@ class TrainingSession(models.Model):
                 accrual.save(update_fields=[
                     "participant_count", "rate_per_participant", "amount", "status",
                 ])
+
+
+class SessionAttendance(models.Model):
+    class Status(models.TextChoices):
+        BOOKED = "booked", "Booked"
+        ATTENDED = "attended", "Attended"
+        ABSENT = "absent", "Absent"
+        CANCELLED = "cancelled", "Cancelled"
+
+    session = models.ForeignKey(
+        TrainingSession, on_delete=models.CASCADE, related_name="attendance_records",
+    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.BOOKED)
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("session", "user"), name="unique_session_attendance"),
+        ]
+        ordering = ["user__username", "pk"]
+
+    def mark_attended(self) -> None:
+        self.status = self.Status.ATTENDED
+        self.checked_in_at = timezone.now()
+        self.save(update_fields=["status", "checked_in_at", "updated_at"])
 
 
 class RecurringSchedule(models.Model):
