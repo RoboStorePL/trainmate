@@ -8,6 +8,15 @@ and Camera Module 3 Wide.
 
 > *Find your rhythm. Move together.*
 
+## Live demo
+
+[Open TrainMate](https://trainmate-9390.onrender.com/accounts/login/?next=/)
+
+Demo client:
+
+- Login: `user`
+- Password: `user12345`
+
 ## What it does
 
 - **Session booking** — browse, search, create, confirm, cancel and complete
