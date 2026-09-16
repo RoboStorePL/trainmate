@@ -33,7 +33,13 @@ Demo client:
   period, automatic visit consumption and eligible cancellation refunds.
 - **Operations** — clients, trainers, disciplines, balances and trainer salary
   accruals are managed through the app and Django Admin. Ready salary records
-  can be paid as one auditable batch per trainer.
+  can be paid as one auditable batch per trainer and session date range.
+  Confirmation previews attendance × rate and fixes that calculation. Payment
+  history records its author, method, note and included earnings; trainers see
+  only their own history. Signed corrections retain the original calculation
+  and are included in a subsequent payment. Expected booking estimates are
+  shown separately from confirmed money due. Payments are recorded manually;
+  TrainMate does not send bank transfers.
 - **Vision Lab** — on-device pose landmarks from a Raspberry Pi camera, a
   private low-latency browser preview and a compact progress history.
 

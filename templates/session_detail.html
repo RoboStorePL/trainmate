@@ -3,24 +3,26 @@
   <span class="tag">{{ object.specialization }}</span>
   <h1>{{ object.title }}</h1>
   <article class="detail"><p>{{ object.description }}</p><h3>{{ object.trainer }}</h3><p>{{ object.starts_at }} · {{ object.duration_minutes }} minutes</p><p>{{ object.location }}</p><p>{{ object.participants.count }} / {{ object.capacity }} places booked</p>
-    {% if user in object.participants.all %}
+    {% if object.status == "completed" %}
+      <p><span class="status status-ready">Completed</span></p>
+    {% elif user in object.participants.all %}
       <form method="post" action="{% url 'training:cancel' object.pk %}">{% csrf_token %}<button>Cancel my booking</button></form>
     {% else %}
       <form method="post" action="{% url 'training:book' object.pk %}">{% csrf_token %}<button>Book my place ↗</button></form>
     {% endif %}
     {% if can_manage_session and object.status == "scheduled" %}
-      <form class="confirm-session-form" method="post" action="{% url 'training:session-complete' object.pk %}">{% csrf_token %}
+      <form class="confirm-session-form" method="get" action="{% url 'training:session-complete' object.pk %}">
         <button>Confirm session</button>
-        <p class="muted">Marks the session as completed and prepares its payout.</p>
+        <p class="muted">Review attendance and earnings before confirming.</p>
       </form>
     {% endif %}
-    {% if can_manage_session %}<div class="actions"><a href="{% url 'training:session-update' object.pk %}">Edit session</a><a href="{% url 'training:session-delete' object.pk %}">Delete session</a></div>{% endif %}
+    {% if can_manage_session and object.status == "scheduled" %}<div class="actions"><a href="{% url 'training:session-update' object.pk %}">Edit session</a><a href="{% url 'training:session-delete' object.pk %}">Delete session</a></div>{% endif %}
   </article>
   {% if can_manage_session %}
-    <section class="attendance-panel"><h2>Attendance</h2><p class="muted">Correct attendance if someone forgot to check in at reception.</p>
+    <section class="attendance-panel"><h2>Attendance</h2><p class="muted">{% if object.status == "completed" %}Attendance has been confirmed. An administrator can record earnings corrections in Payouts.{% else %}Correct attendance if someone forgot to check in at reception.{% endif %}</p>
       {% for row in attendance_rows %}
         <div class="attendance-row"><div><strong>{{ row.user.get_full_name|default:row.user.username }}</strong>{% if row.attendance %}<span class="status status-{{ row.attendance.status }}">{{ row.attendance.get_status_display }}</span>{% else %}<span class="status status-booked">Booked</span>{% endif %}</div>
-        <form method="post" action="{% url 'training:attendance-update' object.pk row.user.pk %}">{% csrf_token %}<select name="status"><option value="booked"{% if not row.attendance or row.attendance.status == "booked" %} selected{% endif %}>Booked</option><option value="attended"{% if row.attendance.status == "attended" %} selected{% endif %}>Attended</option><option value="absent"{% if row.attendance.status == "absent" %} selected{% endif %}>Absent</option></select><button>Save</button></form></div>
+        {% if object.status == "scheduled" %}<form method="post" action="{% url 'training:attendance-update' object.pk row.user.pk %}">{% csrf_token %}<select name="status"><option value="booked"{% if not row.attendance or row.attendance.status == "booked" %} selected{% endif %}>Booked</option><option value="attended"{% if row.attendance.status == "attended" %} selected{% endif %}>Attended</option><option value="absent"{% if row.attendance.status == "absent" %} selected{% endif %}>Absent</option></select><button>Save</button></form>{% endif %}</div>
       {% empty %}<p>No clients have booked this session yet.</p>{% endfor %}
     </section>
   {% endif %}

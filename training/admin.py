@@ -63,7 +63,7 @@ class SalaryAccrualAdmin(admin.ModelAdmin):
         "trainer", "session", "participant_count", "rate_per_participant",
         "amount", "status", "payout", "admin_note", "confirmed_at", "paid_at",
     )
-    readonly_fields = ("confirmed_at", "paid_at")
+    readonly_fields = fields
 
     def has_add_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
         return False
@@ -79,7 +79,10 @@ class TrainerPayoutAdmin(admin.ModelAdmin):
     list_display = ("trainer", "amount", "paid_at", "note")
     search_fields = ("trainer__name", "note")
     list_select_related = ("trainer",)
-    readonly_fields = ("trainer", "amount", "paid_at", "note")
+    readonly_fields = ("trainer", "amount", "paid_at", "note", "method", "recorded_by")
+
+    def has_change_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
+        return False
 
     def has_add_permission(self, request: HttpRequest, obj: object | None = None) -> bool:
         return False

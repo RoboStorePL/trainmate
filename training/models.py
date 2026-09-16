@@ -92,6 +92,7 @@ class TrainingSession(models.Model):
         max_length=10, choices=Status.choices, default=Status.SCHEDULED,
     )
     completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="confirmed_sessions")
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="training_sessions",
     )
@@ -134,9 +135,9 @@ class TrainingSession(models.Model):
             self.completed_at = timezone.now()
         super().save(*args, **kwargs)
         if self.status == self.Status.COMPLETED:
-            participant_count = self.participants.count()
-            if participant_count == 0:
-                return
+            participant_count = self.attendance_records.filter(
+                status=SessionAttendance.Status.ATTENDED, user__in=self.participants.all(),
+            ).count()
             accrual, created = SalaryAccrual.objects.get_or_create(
                 session=self,
                 defaults={
@@ -356,6 +357,8 @@ class TrainerPayout(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     note = models.CharField(max_length=255, blank=True)
     paid_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="recorded_payouts")
+    method = models.CharField(max_length=12, choices=[("cash", "Cash"), ("transfer", "Bank transfer"), ("unknown", "Not recorded")], default="unknown")
 
     class Meta:
         ordering = ["-paid_at", "-pk"]
@@ -363,15 +366,20 @@ class TrainerPayout(models.Model):
     def __str__(self) -> str:
         return f"{self.trainer}: {self.amount} PLN on {self.paid_at:%d %b %Y}"
 
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("Recorded payments cannot be edited.")
+        super().save(*args, **kwargs)
+
 
 class SalaryAccrual(models.Model):
     class Status(models.TextChoices):
-        ACCRUED = "accrued", "Accrued"
+        ACCRUED = "accrued", "Expected"
         READY = "ready", "Ready for payout"
         PAID = "paid", "Paid"
 
     trainer = models.ForeignKey(Trainer, on_delete=models.PROTECT, related_name="accruals")
-    session = models.OneToOneField(TrainingSession, on_delete=models.CASCADE, related_name="salary_accrual")
+    session = models.OneToOneField(TrainingSession, on_delete=models.PROTECT, related_name="salary_accrual")
     participant_count = models.PositiveIntegerField()
     rate_per_participant = models.DecimalField(max_digits=8, decimal_places=2)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -396,6 +404,13 @@ class SalaryAccrual(models.Model):
         """Keep the payout lifecycle one-way and retain its key timestamps."""
         previous_status = None
         if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            if previous.status == self.Status.PAID and (previous.payout_id != self.payout_id or previous.paid_at != self.paid_at):
+                raise ValidationError("A paid record cannot be moved to another payment.")
+            if previous.status in {self.Status.READY, self.Status.PAID}:
+                frozen = ("trainer_id", "session_id", "participant_count", "rate_per_participant", "amount")
+                if any(getattr(previous, field) != getattr(self, field) for field in frozen):
+                    raise ValidationError("Confirmed salary amounts are fixed. Record a separate correction instead.")
             previous_status = type(self).objects.filter(pk=self.pk).values_list(
                 "status", flat=True,
             ).first()
@@ -419,6 +434,18 @@ class SalaryAccrual(models.Model):
         if update_fields := kwargs.get("update_fields"):
             kwargs["update_fields"] = set(update_fields) | timestamp_fields
         super().save(*args, **kwargs)
+
+
+class SalaryAdjustment(models.Model):
+    accrual = models.ForeignKey(SalaryAccrual, on_delete=models.PROTECT, related_name="adjustments")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=255)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    payout = models.ForeignKey(TrainerPayout, on_delete=models.PROTECT, null=True, blank=True, related_name="adjustments")
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
 
 
 class VisionDevice(models.Model):

@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>My earnings</h1>
-  <div class="stats"><article><strong>{{ total_earned }} PLN</strong><span>Total earned</span></article><article><strong>{{ outstanding_total }} PLN</strong><span>Outstanding</span></article><article><strong>{{ hold_total }} PLN</strong><span>On hold</span></article><article><strong>{{ confirmed_total }} PLN</strong><span>Ready for payout</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
-  <p class="muted">Outstanding includes On hold and Ready for payout. Total earned includes every recorded session, including Paid.</p>
+  <div class="stats"><article><strong>{{ hold_total }} PLN</strong><span>Expected</span></article><article><strong>{{ confirmed_total }} PLN</strong><span>Due for payment</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
+  <p class="muted">All-time totals. Expected amounts are booking estimates. Confirmation fixes earnings based on attendance.</p>
+  {% include "payout_history.html" %}
+  <h2>Earnings journal</h2>
   <div class="cards">{% for accrual in accruals %}<article>
     <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.session.title }}</h2>
     <p>{{ accrual.participant_count }} participants × {{ accrual.rate_per_participant }} PLN</p>
     <p><strong>{{ accrual.amount }} PLN</strong></p>
   </article>{% empty %}<p>No completed sessions with earnings yet.</p>{% endfor %}</div>
+  {% include "salary_adjustments.html" %}
 {% endblock %}

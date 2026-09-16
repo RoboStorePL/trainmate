@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Payment #{{ object.pk }}</h1>
+<article><h2>{{ object.trainer }} · {{ object.amount }} PLN</h2><p>{{ object.paid_at|date:"d M Y H:i" }} · {{ object.get_method_display }}</p><p>Recorded by: {{ object.recorded_by|default:"Not recorded" }}</p><p>{{ object.note|default:"No note" }}</p></article>
+<h2>Included earnings</h2>
+<div class="table-wrap"><table><thead><tr><th>Session</th><th>Date</th><th>Count</th><th>Rate</th><th>Amount</th><th>Confirmed by</th></tr></thead><tbody>
+{% for record in object.accruals.all %}<tr><td>{{ record.session.title }}</td><td>{{ record.session.starts_at|date:"d M Y H:i" }}</td><td>{{ record.participant_count }}</td><td>{{ record.rate_per_participant }} PLN</td><td>{{ record.amount }} PLN</td><td>{{ record.session.completed_by|default:"Not recorded" }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% include "salary_adjustments.html" with adjustments=object.adjustments.all %}
+{% endblock %}

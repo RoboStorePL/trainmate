@@ -1,20 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>Trainer salaries</h1>
-  <p class="muted">Accrued is created when a client books. Completed sessions become Ready for payout. Use Manage to edit an amount or mark it Paid.</p>
-  <div class="stats salary-stats"><article><strong>{{ outstanding_total }} PLN</strong><span>Outstanding</span></article><article><strong>{{ accrued_total }} PLN</strong><span>Accrued</span></article><article><strong>{{ ready_total }} PLN</strong><span>Ready for payout</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
+  <p class="muted">Expected amounts are booking estimates. Confirm sessions after checking attendance to fix earnings. Totals below cover all time; choose a session period when recording a payment.</p>
+  <div class="stats salary-stats"><article><strong>{{ accrued_total }} PLN</strong><span>Expected</span></article><article><strong>{{ ready_total }} PLN</strong><span>Due for payment</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
   <h2>Totals by trainer</h2>
   <div class="table-wrap salary-table"><table>
-    <thead><tr><th>Trainer</th><th>Sessions</th><th>Accrued</th><th>Ready</th><th>Paid</th><th>Outstanding</th><th>Total earned</th><th>Action</th></tr></thead>
-    <tbody>{% for trainer in trainer_totals %}<tr><td><strong>{{ trainer.name }}</strong></td><td class="number">{{ trainer.session_count }}</td><td class="money">{{ trainer.accrued_total }} PLN</td><td class="money">{{ trainer.ready_total }} PLN</td><td class="money">{{ trainer.paid_total }} PLN</td><td class="money"><strong>{{ trainer.outstanding_total }} PLN</strong></td><td class="money"><strong>{{ trainer.total_earned }} PLN</strong></td><td>{% if trainer.ready_total %}<a class="table-action" href="{% url 'training:trainer-payout-create' trainer.pk %}">Pay {{ trainer.ready_total }} PLN</a>{% else %}<span class="muted">No payout ready</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="8">No trainer totals yet.</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Trainer</th><th>Sessions</th><th>Expected</th><th>Due for payment</th><th>Paid</th><th>Action</th></tr></thead>
+    <tbody>{% for trainer in trainer_totals %}<tr><td><strong>{{ trainer.name }}</strong></td><td>{{ trainer.session_count }}</td><td>{{ trainer.accrued_total }} PLN</td><td><strong>{{ trainer.ready_total }} PLN</strong></td><td>{{ trainer.paid_total }} PLN</td><td>{% if trainer.ready_total %}<a class="table-action" href="{% url 'training:trainer-payout-create' trainer.pk %}">Record payment</a>{% else %}<span class="muted">No payment due</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="6">No trainer totals yet.</td></tr>{% endfor %}</tbody>
   </table></div>
-  <h2>Session details</h2>
+  {% include "payout_history.html" %}
+  <h2>Earnings journal</h2>
+  <p class="muted">Expected rows count bookings; newly confirmed rows count attendees. Earlier confirmed records retain their original calculation.</p>
   <div class="table-wrap salary-table"><table>
-    <thead><tr><th>Session date</th><th>Trainer</th><th>Session</th><th>Participants</th><th>Rate</th><th>Amount</th><th>Status</th><th>Paid on</th></tr></thead>
+    <thead><tr><th>Session date</th><th>Trainer</th><th>Session</th><th>Count</th><th>Rate</th><th>Amount</th><th>Status</th><th>Confirmed</th><th>Paid on</th></tr></thead>
     <tbody>{% for accrual in accruals %}<tr>
-      <td>{{ accrual.session.starts_at|date:"d M Y" }}</td><td><strong>{{ accrual.trainer }}</strong></td><td>{{ accrual.session.title }}</td><td class="number">{{ accrual.participant_count }}</td>
+      <td>{{ accrual.session.starts_at|date:"d M Y" }}</td><td><strong>{{ accrual.trainer }}</strong></td><td>{{ accrual.session.title }}{% if accrual.status != "accrued" %}<br><a href="{% url 'training:salary-adjustment-create' accrual.pk %}">Add correction</a>{% endif %}</td><td class="number">{{ accrual.participant_count }}</td>
       <td class="money">{{ accrual.rate_per_participant }} PLN</td><td class="money"><strong>{{ accrual.amount }} PLN</strong></td>
-      <td><span class="status status-{{ accrual.status }}">{{ accrual.get_status_display }}</span></td><td>{% if accrual.paid_at %}{{ accrual.paid_at|date:"d M Y" }}{% else %}—{% endif %}</td>
+      <td><span class="status status-{{ accrual.status }}">{{ accrual.get_status_display }}</span></td><td>{{ accrual.confirmed_at|date:"d M Y H:i" }} {{ accrual.session.completed_by|default:"" }}</td><td>{% if accrual.paid_at %}{{ accrual.paid_at|date:"d M Y" }}{% else %}—{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="8">No salary accruals yet.</td></tr>{% endfor %}</tbody>
   </table></div>
+  {% include "salary_adjustments.html" %}
 {% endblock %}

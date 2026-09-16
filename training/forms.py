@@ -46,6 +46,10 @@ class BalanceAdjustmentForm(forms.Form):
 
 
 class TrainerPayoutForm(forms.Form):
+    starts_on = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Sessions from")
+    ends_on = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Sessions through")
+    method = forms.ChoiceField(choices=[("cash", "Cash"), ("transfer", "Bank transfer")])
+    selection = forms.CharField(widget=forms.HiddenInput)
     note = forms.CharField(
         max_length=255,
         required=False,
@@ -53,11 +57,28 @@ class TrainerPayoutForm(forms.Form):
         help_text="Optional: for example, bank transfer reference or payout period.",
     )
 
+    def clean(self):
+        data = super().clean()
+        if data.get("starts_on") and data.get("ends_on") and data["starts_on"] > data["ends_on"]:
+            raise forms.ValidationError("The end date must be on or after the start date.")
+        return data
+
+
+class SalaryAdjustmentForm(forms.Form):
+    amount = forms.DecimalField(max_digits=10, decimal_places=2, label="Correction (PLN)", help_text="Positive for extra earnings, negative for a deduction.")
+    reason = forms.CharField(max_length=255, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise forms.ValidationError("Enter a non-zero correction.")
+        return amount
+
 
 class SessionForm(forms.ModelForm):
     class Meta:
         model = TrainingSession
-        exclude = ("participants",)
+        exclude = ("participants", "completed_at", "completed_by")
         widgets = {
             "starts_at": forms.DateTimeInput(
                 format="%Y-%m-%dT%H:%M",
@@ -68,7 +89,7 @@ class SessionForm(forms.ModelForm):
 
 class TrainerSessionForm(SessionForm):
     class Meta(SessionForm.Meta):
-        # Completion changes financial data and is restricted to an admin.
+        # Completion uses a separate review screen for admins and assigned trainers.
         fields = (
             "title", "description", "specialization", "starts_at",
             "duration_minutes", "capacity", "location",

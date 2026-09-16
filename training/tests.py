@@ -17,11 +17,16 @@ from django.utils.http import urlsafe_base64_encode
 from .models import (
     BalanceTransaction, Membership, MembershipPlan, SalaryAccrual,
     RecurringSchedule, SessionAttendance, Specialization, Trainer, TrainingSession,
-    TrainerPayout, VisionAnalysis, VisionDevice,
+    TrainerPayout, SalaryAdjustment, VisionAnalysis, VisionDevice,
 )
 
 
 class TrainMateTests(TestCase):
+    def confirm_session(self):
+        url = reverse("training:session-complete", args=[self.session.pk])
+        preview = self.client.get(url)
+        return self.client.post(url, {"selection": preview.context["selection"]})
+
     @classmethod
     def setUpTestData(cls) -> None:
         cls.user = get_user_model().objects.create_user(username="member")
@@ -283,6 +288,7 @@ class TrainMateTests(TestCase):
 
     def test_completed_session_creates_salary_accrual(self) -> None:
         self.session.participants.add(self.user)
+        SessionAttendance.objects.create(session=self.session, user=self.user, status="attended")
         self.session.status = TrainingSession.Status.COMPLETED
         self.session.save()
         accrual = SalaryAccrual.objects.get(session=self.session)
@@ -304,9 +310,7 @@ class TrainMateTests(TestCase):
         self.trainer.user = trainer_user
         self.trainer.save()
         self.client.force_login(trainer_user)
-        response = self.client.post(
-            reverse("training:session-complete", args=[self.session.pk]),
-        )
+        response = self.confirm_session()
         self.assertEqual(response.status_code, 302)
         self.session.refresh_from_db()
         self.assertEqual(self.session.status, TrainingSession.Status.COMPLETED)
@@ -321,9 +325,7 @@ class TrainMateTests(TestCase):
             username="Mixon", password="test-password",
         )
         self.client.force_login(admin)
-        response = self.client.post(
-            reverse("training:session-complete", args=[self.session.pk]),
-        )
+        response = self.confirm_session()
         self.assertEqual(response.status_code, 302)
         self.session.refresh_from_db()
         self.assertEqual(self.session.status, TrainingSession.Status.COMPLETED)
@@ -377,7 +379,7 @@ class TrainMateTests(TestCase):
             username="Mixon", password="test-password",
         )
         self.client.force_login(admin)
-        self.client.post(reverse("training:session-complete", args=[self.session.pk]))
+        self.confirm_session()
 
         self.client.force_login(self.user)
         response = self.client.post(reverse("training:cancel", args=[self.session.pk]))
@@ -493,8 +495,8 @@ class TrainMateTests(TestCase):
         self.assertEqual(response.context["hold_total"], 10)
         self.assertEqual(response.context["confirmed_total"], 20)
         self.assertEqual(response.context["paid_total"], 30)
-        self.assertEqual(response.context["outstanding_total"], 30)
-        self.assertEqual(response.context["total_earned"], 60)
+        self.assertEqual(response.context["outstanding_total"], 20)
+        self.assertEqual(response.context["total_earned"], 50)
 
     def test_admin_payout_page_groups_totals_by_trainer(self) -> None:
         SalaryAccrual.objects.create(
@@ -508,8 +510,8 @@ class TrainMateTests(TestCase):
         response = self.client.get(reverse("training:payout-list"))
 
         self.assertEqual(response.context["accrued_total"], 10)
-        self.assertEqual(response.context["outstanding_total"], 10)
-        self.assertEqual(response.context["trainer_totals"][0].total_earned, 10)
+        self.assertEqual(response.context["outstanding_total"], 0)
+        self.assertEqual(response.context["trainer_totals"][0].total_earned, 0)
 
     def test_admin_can_pay_all_ready_sessions_to_one_trainer_in_a_batch(self) -> None:
         ready_one = SalaryAccrual.objects.create(
@@ -530,8 +532,10 @@ class TrainMateTests(TestCase):
         self.client.force_login(admin)
 
         url = reverse("training:trainer-payout-create", args=[self.trainer.pk])
-        self.assertContains(self.client.get(url), "30 PLN")
-        response = self.client.post(url, {"note": "September transfer"})
+        preview = self.client.get(url)
+        self.assertContains(preview, "30.00 PLN")
+        data = {"note": "September transfer", "method": "transfer", "selection": preview.context["form"].initial["selection"]}
+        response = self.client.post(url, data)
 
         self.assertRedirects(response, reverse("training:payout-list"))
         payout = TrainerPayout.objects.get(trainer=self.trainer)
@@ -543,6 +547,93 @@ class TrainMateTests(TestCase):
         self.assertEqual(ready_two.status, SalaryAccrual.Status.PAID)
         self.assertEqual(ready_one.payout, payout)
         self.assertEqual(ready_two.payout, payout)
+        self.assertEqual(payout.recorded_by, admin)
+        self.client.post(url, data)
+        self.assertEqual(TrainerPayout.objects.count(), 1)
+
+    def test_confirmation_uses_attendance_and_freezes_rate(self) -> None:
+        other = get_user_model().objects.create_user(username="absent-client")
+        self.session.participants.add(self.user, other)
+        SessionAttendance.objects.create(session=self.session, user=self.user, status="attended")
+        SessionAttendance.objects.create(session=self.session, user=other, status="absent")
+        admin = get_user_model().objects.create_superuser(username="review-admin")
+        self.client.force_login(admin)
+        url = reverse("training:session-complete", args=[self.session.pk])
+        preview = self.client.get(url)
+        self.assertEqual(preview.context["amount"], 10)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "scheduled")
+        self.confirm_session()
+        accrual = SalaryAccrual.objects.get(session=self.session)
+        self.assertEqual(accrual.amount, 10)
+        self.assertEqual(accrual.participant_count, 1)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.completed_by, admin)
+        self.trainer.rate_per_participant = 50
+        self.trainer.save()
+        self.session.save()
+        accrual.refresh_from_db()
+        self.assertEqual(accrual.amount, 10)
+        accrual.amount = 50
+        with self.assertRaises(ValidationError):
+            accrual.save()
+
+    def test_confirmation_rejects_changed_attendance_preview(self) -> None:
+        self.session.participants.add(self.user)
+        admin = get_user_model().objects.create_superuser(username="review-admin")
+        self.client.force_login(admin)
+        url = reverse("training:session-complete", args=[self.session.pk])
+        preview = self.client.get(url)
+        SessionAttendance.objects.create(session=self.session, user=self.user, status="attended")
+        self.client.post(url, {"selection": preview.context["selection"]})
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "scheduled")
+        self.assertFalse(SalaryAccrual.objects.filter(session=self.session).exists())
+
+    def test_payment_period_corrections_and_history_permissions(self) -> None:
+        first = SalaryAccrual.objects.create(trainer=self.trainer, session=self.session, participant_count=2, rate_per_participant=10, amount=20, status="ready")
+        later = TrainingSession.objects.create(title="Later class", trainer=self.trainer, specialization=self.discipline, starts_at=self.session.starts_at + timedelta(days=30), location="Studio")
+        excluded = SalaryAccrual.objects.create(trainer=self.trainer, session=later, participant_count=3, rate_per_participant=10, amount=30, status="ready")
+        admin = get_user_model().objects.create_superuser(username="finance-admin")
+        self.client.force_login(admin)
+        correction_url = reverse("training:salary-adjustment-create", args=[first.pk])
+        self.assertEqual(self.client.get(correction_url).status_code, 200)
+        self.client.post(correction_url, {"amount": "-5", "reason": "Agreed correction"})
+        self.assertEqual(self.client.get(reverse("training:payout-list")).context["ready_total"], 45)
+        url = reverse("training:trainer-payout-create", args=[self.trainer.pk])
+        period = {"starts_on": timezone.localdate(self.session.starts_at).isoformat(), "ends_on": timezone.localdate(self.session.starts_at).isoformat()}
+        preview = self.client.get(url, period)
+        self.assertEqual(preview.context["payout_amount"], 15)
+        self.client.post(url, {**period, "method": "cash", "selection": preview.context["form"].initial["selection"]})
+        payout = TrainerPayout.objects.get()
+        self.assertEqual(payout.amount, 15)
+        self.assertEqual(payout.adjustments.get().amount, -5)
+        excluded.refresh_from_db()
+        self.assertEqual(excluded.status, "ready")
+        detail = reverse("training:trainer-payout-detail", args=[payout.pk])
+        self.assertContains(self.client.get(detail), "Agreed correction")
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(detail).status_code, 404)
+        self.assertEqual(self.client.post(correction_url, {"amount": "5", "reason": "No access"}).status_code, 403)
+        trainer_user = get_user_model().objects.create_user(username="finance-trainer", role="trainer")
+        self.trainer.user = trainer_user
+        self.trainer.save()
+        self.client.force_login(trainer_user)
+        self.assertContains(self.client.get(detail), "15.00 PLN")
+        earnings = self.client.get(reverse("training:trainer-earnings"))
+        self.assertEqual(earnings.context["confirmed_total"], 30)
+        self.assertEqual(earnings.context["paid_total"], 15)
+
+    def test_new_ready_record_invalidates_payment_preview(self) -> None:
+        first = SalaryAccrual.objects.create(trainer=self.trainer, session=self.session, participant_count=1, rate_per_participant=10, amount=10, status="ready")
+        admin = get_user_model().objects.create_superuser(username="finance-admin")
+        self.client.force_login(admin)
+        url = reverse("training:trainer-payout-create", args=[self.trainer.pk])
+        preview = self.client.get(url)
+        SalaryAdjustment.objects.create(accrual=first, amount=5, reason="Additional attendee", created_by=admin)
+        response = self.client.post(url, {"method": "cash", "selection": preview.context["form"].initial["selection"]})
+        self.assertContains(response, "selection changed")
+        self.assertFalse(TrainerPayout.objects.exists())
 
     def test_demo_balance_can_purchase_membership(self) -> None:
         plan = MembershipPlan.objects.create(
