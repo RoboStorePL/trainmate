@@ -1,0 +1,5 @@
+<h2>Payment history</h2>
+<p class="muted">Recorded payments made outside TrainMate. No money is transferred by this application.</p>
+<div class="table-wrap"><table><thead><tr><th>Recorded on</th><th>Trainer</th><th>Amount</th><th>Method</th><th>Recorded by</th><th>Details</th></tr></thead><tbody>
+{% for payout in payouts %}<tr><td>{{ payout.paid_at|date:"d M Y H:i" }}</td><td>{{ payout.trainer }}</td><td>{{ payout.amount }} PLN</td><td>{{ payout.get_method_display }}</td><td>{{ payout.recorded_by|default:"Not recorded" }}</td><td><a href="{% url 'training:trainer-payout-detail' payout.pk %}">Payment #{{ payout.pk }}</a></td></tr>{% empty %}<tr><td colspan="6">No recorded payments yet.</td></tr>{% endfor %}
+</tbody></table></div>

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django import forms
@@ -5,13 +6,21 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.db.models import Q
 
-from .models import Trainer, TrainingSession, User
+from .models import RecurringSchedule, Trainer, TrainingSession, User
 
 
 class SignUpForm(UserCreationForm):
+    email = forms.EmailField(required=True)
+
     class Meta(UserCreationForm.Meta):
         model = get_user_model()
-        fields = ("username", "first_name", "last_name", "fitness_level")
+        fields = ("username", "email", "first_name", "last_name", "fitness_level")
+
+    def clean_email(self) -> str:
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
 
 
 class ProfileForm(forms.ModelForm):
@@ -20,10 +29,56 @@ class ProfileForm(forms.ModelForm):
         fields = ("first_name", "last_name", "fitness_level")
 
 
+class BalanceAdjustmentForm(forms.Form):
+    amount = forms.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        label="Adjustment amount (PLN)",
+        help_text="Use a positive amount to add funds and a negative amount to deduct them.",
+    )
+    description = forms.CharField(max_length=255, label="Reason")
+
+    def clean_amount(self) -> Decimal:
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise forms.ValidationError("The adjustment cannot be zero.")
+        return amount
+
+
+class TrainerPayoutForm(forms.Form):
+    starts_on = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Sessions from")
+    ends_on = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Sessions through")
+    method = forms.ChoiceField(choices=[("cash", "Cash"), ("transfer", "Bank transfer")])
+    selection = forms.CharField(widget=forms.HiddenInput)
+    note = forms.CharField(
+        max_length=255,
+        required=False,
+        label="Payment reference or note",
+        help_text="Optional: for example, bank transfer reference or payout period.",
+    )
+
+    def clean(self):
+        data = super().clean()
+        if data.get("starts_on") and data.get("ends_on") and data["starts_on"] > data["ends_on"]:
+            raise forms.ValidationError("The end date must be on or after the start date.")
+        return data
+
+
+class SalaryAdjustmentForm(forms.Form):
+    amount = forms.DecimalField(max_digits=10, decimal_places=2, label="Correction (PLN)", help_text="Positive for extra earnings, negative for a deduction.")
+    reason = forms.CharField(max_length=255, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise forms.ValidationError("Enter a non-zero correction.")
+        return amount
+
+
 class SessionForm(forms.ModelForm):
     class Meta:
         model = TrainingSession
-        exclude = ("participants",)
+        exclude = ("participants", "completed_at", "completed_by")
         widgets = {
             "starts_at": forms.DateTimeInput(
                 format="%Y-%m-%dT%H:%M",
@@ -34,7 +89,44 @@ class SessionForm(forms.ModelForm):
 
 class TrainerSessionForm(SessionForm):
     class Meta(SessionForm.Meta):
-        exclude = ("participants", "trainer")
+        # Completion uses a separate review screen for admins and assigned trainers.
+        fields = (
+            "title", "description", "specialization", "starts_at",
+            "duration_minutes", "capacity", "location",
+        )
+
+
+class RecurringScheduleForm(forms.ModelForm):
+    weekdays = forms.MultipleChoiceField(
+        choices=RecurringSchedule.DAYS_OF_WEEK,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="TrainMate creates bookable sessions only for the next three weeks.",
+    )
+
+    class Meta:
+        model = RecurringSchedule
+        exclude = ()
+        widgets = {
+            "start_time": forms.TimeInput(attrs={"type": "time"}),
+            "starts_on": forms.DateInput(attrs={"type": "date"}),
+            "ends_on": forms.DateInput(attrs={"type": "date"}),
+        }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.initial["weekdays"] = [str(day) for day in self.instance.weekdays]
+
+    def clean_weekdays(self) -> list[int]:
+        return [int(day) for day in self.cleaned_data["weekdays"]]
+
+
+class TrainerRecurringScheduleForm(RecurringScheduleForm):
+    class Meta(RecurringScheduleForm.Meta):
+        fields = (
+            "title", "description", "specialization", "weekdays", "start_time",
+            "duration_minutes", "capacity", "location", "starts_on", "ends_on",
+            "is_active",
+        )
 
 
 class TrainerForm(forms.ModelForm):
@@ -51,7 +143,7 @@ class TrainerForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         selected_user_id = self.instance.user_id
         self.fields["user"].queryset = User.objects.filter(
-            role=User.Role.TRAINER,
+            Q(role=User.Role.TRAINER) | Q(pk=selected_user_id),
         ).filter(
             Q(trainer_profile__isnull=True) | Q(pk=selected_user_id),
         ).order_by("username")

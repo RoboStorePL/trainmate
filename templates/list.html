@@ -7,10 +7,11 @@
       <article>
         {% if kind == "session" %}<span class="tag">{{ item.specialization }}</span>{% endif %}
         <h2>{% if kind == "session" %}<a href="{{ item.get_absolute_url }}">{{ item }}</a>{% else %}{{ item }}{% endif %}</h2>
-        {% if kind == "session" %}<p>{{ item.trainer }} · {{ item.starts_at|date:"d M, H:i" }}</p><p>{{ item.location }}</p>{% endif %}
+        {% if kind == "session" %}<p>{{ item.trainer }} · {{ item.starts_at|date:"d M, H:i" }}</p><p>{{ item.location }}</p><p class="tag">{{ item.get_status_display }}</p>{% endif %}
         {% if kind == "trainer" %}<p>{{ item.bio|truncatewords:25 }}</p><p>{{ item.experience_years }} years of experience</p>{% endif %}
         {% if kind == "specialization" %}<p>{{ item.description }}</p>{% endif %}
         {% if can_manage_catalog or kind == "session" and item.trainer.user_id == user.pk %}<div class="actions"><a href="{% url 'training:'|add:kind|add:'-update' item.pk %}">Edit</a><a href="{% url 'training:'|add:kind|add:'-delete' item.pk %}">Delete</a></div>{% endif %}
+        {% if kind == "session" and can_manage_catalog and item.status == "scheduled" %}<form method="get" action="{% url 'training:session-complete' item.pk %}"><button>Confirm session</button></form>{% endif %}
       </article>
     {% empty %}<p>No matches. Try another search or create a new entry.</p>{% endfor %}
   </div>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row"><div><h1>Regular schedules</h1><p class="muted">Each active rule creates bookable sessions only for the next three weeks.</p></div><a class="button" href="{% url 'training:recurring-schedule-create' %}">+ Add regular schedule</a></div>
+  <div class="cards">
+    {% for schedule in schedules %}
+      <article>
+        <span class="tag">{% if schedule.is_active %}ACTIVE{% else %}PAUSED{% endif %}</span>
+        <h2>{{ schedule.title }}</h2>
+        <p>{{ schedule.trainer }} · {{ schedule.specialization }}</p>
+        <p><strong>{{ schedule.weekday_labels }}</strong></p>
+        <p>{{ schedule.start_time|time:"H:i" }} · {{ schedule.duration_minutes }} min · {{ schedule.location }}</p>
+        <p class="muted">Starts {{ schedule.starts_on|date:"d M Y" }}{% if schedule.ends_on %} · ends {{ schedule.ends_on|date:"d M Y" }}{% endif %}</p>
+        <div class="actions"><a href="{% url 'training:recurring-schedule-update' schedule.pk %}">Edit rule</a><a href="{% url 'training:recurring-schedule-delete' schedule.pk %}">Delete rule</a></div>
+      </article>
+    {% empty %}<p>No regular schedules yet. Create one to fill the next three weeks automatically.</p>{% endfor %}
+  </div>
+{% endblock %}

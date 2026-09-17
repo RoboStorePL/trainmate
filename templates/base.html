@@ -9,18 +9,29 @@
 </head>
 <body>
   <aside>
+    {% if user.is_authenticated and user.role == "kiosk" %}
+      <a class="brand" href="{% url 'training:reception-session-list' %}">Train<span>Mate</span></a>
+      <p class="muted">RECEPTION CHECK-IN</p>
+      <nav aria-label="Reception navigation"><a class="nav-link{% if request.resolver_match.url_name == 'reception-session-list' or request.resolver_match.url_name == 'reception-check-in' %} is-active{% endif %}" href="{% url 'training:reception-session-list' %}">Today’s sessions</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="secondary">Lock kiosk</button></form></nav>
+    {% else %}
     <a class="brand" href="/">Train<span>Mate</span></a>
     <p class="muted">MAKE MOVEMENT A HABIT</p>
-    <nav>
-      <a href="/">Overview</a>
-      <a href="{% url 'training:session-list' %}">Training sessions</a>
-      <a href="{% url 'training:trainer-list' %}">Trainers</a>
-      <a href="{% url 'training:specialization-list' %}">Disciplines</a>
+    <nav aria-label="Primary navigation">
+      <a class="nav-link{% if request.resolver_match.url_name == 'home' %} is-active{% endif %}" href="/"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>Overview</a>
+      <a class="nav-link{% if request.resolver_match.url_name == 'session-list' or request.resolver_match.url_name == 'session-create' or request.resolver_match.url_name == 'session-update' or request.resolver_match.url_name == 'session-delete' or request.resolver_match.url_name == 'session-detail' or request.resolver_match.url_name == 'recurring-schedule-list' or request.resolver_match.url_name == 'recurring-schedule-create' or request.resolver_match.url_name == 'recurring-schedule-update' or request.resolver_match.url_name == 'recurring-schedule-delete' %} is-active{% endif %}" href="{% url 'training:session-list' %}"{% if request.resolver_match.url_name == 'session-list' or request.resolver_match.url_name == 'session-create' or request.resolver_match.url_name == 'session-update' or request.resolver_match.url_name == 'session-delete' or request.resolver_match.url_name == 'session-detail' or request.resolver_match.url_name == 'recurring-schedule-list' or request.resolver_match.url_name == 'recurring-schedule-create' or request.resolver_match.url_name == 'recurring-schedule-update' or request.resolver_match.url_name == 'recurring-schedule-delete' %} aria-current="page"{% endif %}>Training sessions</a>
+      <a class="nav-link{% if request.resolver_match.url_name == 'trainer-list' or request.resolver_match.url_name == 'trainer-create' or request.resolver_match.url_name == 'trainer-update' or request.resolver_match.url_name == 'trainer-delete' %} is-active{% endif %}" href="{% url 'training:trainer-list' %}"{% if request.resolver_match.url_name == 'trainer-list' or request.resolver_match.url_name == 'trainer-create' or request.resolver_match.url_name == 'trainer-update' or request.resolver_match.url_name == 'trainer-delete' %} aria-current="page"{% endif %}>Trainers</a>
+      <a class="nav-link{% if request.resolver_match.url_name == 'specialization-list' or request.resolver_match.url_name == 'specialization-create' or request.resolver_match.url_name == 'specialization-update' or request.resolver_match.url_name == 'specialization-delete' %} is-active{% endif %}" href="{% url 'training:specialization-list' %}"{% if request.resolver_match.url_name == 'specialization-list' or request.resolver_match.url_name == 'specialization-create' or request.resolver_match.url_name == 'specialization-update' or request.resolver_match.url_name == 'specialization-delete' %} aria-current="page"{% endif %}>Disciplines</a>
       {% if user.is_authenticated %}
-        <a href="{% url 'training:membership' %}">My membership</a>
-        {% if user.role == "trainer" %}<a href="{% url 'training:trainer-earnings' %}">My earnings</a>{% endif %}
-        {% if user.is_superuser %}<a href="{% url 'training:client-list' %}">Clients</a><a href="{% url 'training:payout-list' %}">Payouts</a><a href="/admin/">Admin panel</a>{% endif %}
-        <a href="{% url 'training:profile' %}">{{ user.username }} · Profile</a>
+        <a class="nav-link{% if request.resolver_match.url_name == 'membership' or request.resolver_match.url_name == 'add-balance' or request.resolver_match.url_name == 'purchase-membership' %} is-active{% endif %}" href="{% url 'training:membership' %}"{% if request.resolver_match.url_name == 'membership' or request.resolver_match.url_name == 'add-balance' or request.resolver_match.url_name == 'purchase-membership' %} aria-current="page"{% endif %}>My membership</a>
+        <a class="nav-link{% if request.resolver_match.url_name == 'vision-dashboard' %} is-active{% endif %}" href="{% url 'training:vision-dashboard' %}"{% if request.resolver_match.url_name == 'vision-dashboard' %} aria-current="page"{% endif %}>Vision Lab</a>
+        {% if user.is_trainer %}<a class="nav-link{% if request.resolver_match.url_name == 'trainer-earnings' %} is-active{% endif %}" href="{% url 'training:trainer-earnings' %}"{% if request.resolver_match.url_name == 'trainer-earnings' %} aria-current="page"{% endif %}>My earnings</a>{% endif %}
+        {% if user.is_superuser %}
+          <a class="nav-link{% if request.resolver_match.url_name == 'client-list' or request.resolver_match.url_name == 'adjust-client-balance' %} is-active{% endif %}" href="{% url 'training:client-list' %}"{% if request.resolver_match.url_name == 'client-list' or request.resolver_match.url_name == 'adjust-client-balance' %} aria-current="page"{% endif %}>Clients</a>
+          <a class="nav-link{% if request.resolver_match.url_name == 'payout-list' %} is-active{% endif %}" href="{% url 'training:payout-list' %}"{% if request.resolver_match.url_name == 'payout-list' %} aria-current="page"{% endif %}>Payouts</a>
+          <a class="nav-link{% if request.path|slice:':7' == '/admin/' %} is-active{% endif %}" href="/admin/"{% if request.path|slice:':7' == '/admin/' %} aria-current="page"{% endif %}>Admin panel</a>
+        {% endif %}
+        {% if user.is_superuser or user.is_trainer %}<a class="nav-link{% if request.resolver_match.url_name == 'reception-session-list' or request.resolver_match.url_name == 'reception-check-in' %} is-active{% endif %}" href="{% url 'training:reception-session-list' %}">Reception</a>{% endif %}
+        <a class="nav-link{% if request.resolver_match.url_name == 'profile' %} is-active{% endif %}" href="{% url 'training:profile' %}"{% if request.resolver_match.url_name == 'profile' %} aria-current="page"{% endif %}>{{ user.username }} · Profile</a>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}<button class="secondary">Log out</button>
         </form>
@@ -30,6 +41,7 @@
       {% endif %}
     </nav>
     <p class="aside-note">A little movement.<br>A better every day.</p>
+    {% endif %}
   </aside>
   <main>
     <header><span>YOUR SPACE TO MOVE</span><span>Fitness / Recovery / Jiu-jitsu / Yoga</span></header>

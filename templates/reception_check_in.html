@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="title-row"><div><span class="tag">RECEPTION MODE</span><h1>{{ object.title }}</h1><p>{{ object.starts_at|date:"l, d M · H:i" }} · {{ object.location }}</p></div><a class="secondary button" href="{% url 'training:reception-session-list' %}">Change session</a></div>
+  <section class="check-in-panel"><h2>Tap your name when you arrive</h2><p class="muted">Only clients booked for this session appear here.</p>
+    <div class="check-in-list">{% for row in check_in_rows %}<article class="check-in-row"><div><h3>{{ row.user.get_full_name|default:row.user.username }}</h3><p>@{{ row.user.username }}</p></div>{% if row.attendance and row.attendance.status == "attended" %}<div class="check-in-complete"><span class="checked-in">Attended ✓</span><form method="post" action="{% url 'training:kiosk-undo-check-in' object.pk row.user.pk %}">{% csrf_token %}<button class="undo-check-in">Undo check-in</button></form></div>{% else %}<form method="post" action="{% url 'training:kiosk-check-in' object.pk row.user.pk %}">{% csrf_token %}<button class="check-in-button">I’m here</button></form>{% endif %}</article>{% empty %}<p>No booked clients yet.</p>{% endfor %}</div>
+  </section>
+{% endblock %}
