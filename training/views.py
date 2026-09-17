@@ -44,7 +44,7 @@ from .models import (
 
 
 def is_trainer(user: User) -> bool:
-    return user.role == User.Role.TRAINER and hasattr(user, "trainer_profile")
+    return user.is_trainer
 
 
 def can_use_reception(user: User) -> bool:
@@ -622,6 +622,10 @@ class TrainerEarnings(LoginRequiredMixin, UserPassesTestMixin, generic.ListView)
         context["outstanding_total"] = context["confirmed_total"]
         context["total_earned"] = context["outstanding_total"] + context["paid_total"]
         context["payouts"] = TrainerPayout.objects.filter(trainer=self.request.user.trainer_profile).select_related("recorded_by", "trainer")
+        context["missing_accrual_sessions"] = TrainingSession.objects.filter(
+            trainer=self.request.user.trainer_profile, status=TrainingSession.Status.COMPLETED,
+            salary_accrual__isnull=True,
+        )
         return context
 
 

@@ -98,7 +98,20 @@ class RecurringScheduleAdmin(admin.ModelAdmin):
     search_fields = ("title", "trainer__name")
 
 
-admin.site.register([MembershipUsage, Specialization, TrainingSession])
+admin.site.register([MembershipUsage, Specialization])
+
+
+@admin.register(TrainingSession)
+class TrainingSessionAdmin(admin.ModelAdmin):
+    readonly_fields = ("status", "completed_at", "completed_by")
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status == TrainingSession.Status.COMPLETED:
+            return tuple(field.name for field in obj._meta.fields) + ("participants",)
+        return self.readonly_fields
+
+    def has_delete_permission(self, request, obj=None):
+        return not (obj and obj.status == TrainingSession.Status.COMPLETED) and super().has_delete_permission(request, obj)
 
 
 @admin.register(SessionAttendance)
@@ -107,6 +120,15 @@ class SessionAttendanceAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("session__title", "user__username")
     list_select_related = ("session", "user")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(VisionDevice)

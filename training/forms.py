@@ -143,7 +143,7 @@ class TrainerForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         selected_user_id = self.instance.user_id
         self.fields["user"].queryset = User.objects.filter(
-            role=User.Role.TRAINER,
+            Q(role=User.Role.TRAINER) | Q(pk=selected_user_id),
         ).filter(
             Q(trainer_profile__isnull=True) | Q(pk=selected_user_id),
         ).order_by("username")

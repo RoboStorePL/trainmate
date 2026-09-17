@@ -248,3 +248,19 @@ pose visibility and records a privacy-conscious history; exercise-specific
 form rules (for example, squat depth or biceps-curl repetitions) are a planned
 next step. Real payments, CI/CD, Docker deployment, centralised logging and
 automated database backups are intentionally outside the current scope.
+# Trainer earnings and confirmation
+
+A linked Trainer profile grants trainer access to an active non-kiosk account, even
+if its legacy role is still Client. A Trainer role without a linked profile does
+not grant access. Earnings and payment history are scoped to that profile.
+
+Confirm attendance through the session confirmation page. Confirmation immediately
+fixes the attended count and rate and creates one ready-to-pay accrual, in the same
+database transaction. A future scheduled end time produces a warning, not a delay
+in payment eligibility. Repeated confirmation does not create another accrual.
+
+Completed sessions and attendance are locked in the admin; use the application's
+attendance flow before confirmation and administrator earnings corrections after
+confirmation. Corrections retain their amount, reason, author and creation time.
+Missing accruals are reported in the trainer journal rather than silently treated
+as zero. Investigate those records before making any financial correction.

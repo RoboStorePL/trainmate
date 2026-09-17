@@ -19,6 +19,15 @@
     {% if can_manage_session and object.status == "scheduled" %}<div class="actions"><a href="{% url 'training:session-update' object.pk %}">Edit session</a><a href="{% url 'training:session-delete' object.pk %}">Delete session</a></div>{% endif %}
   </article>
   {% if can_manage_session %}
+    {% if object.status == "completed" %}
+      <article><h2>Earnings for this session</h2>
+      {% if object.salary_accrual %}
+        <p>{{ object.salary_accrual.participant_count }} attendees × {{ object.salary_accrual.rate_per_participant }} PLN = <strong>{{ object.salary_accrual.amount }} PLN</strong></p>
+        <p>{{ object.salary_accrual.get_status_display }}</p>
+        {% if not object.salary_accrual.participant_count %}<p>No attendees were confirmed when earnings were recorded. Ask an administrator to record a correction if needed.</p>{% endif %}
+      {% else %}<p class="notice">The earnings record is missing. Ask an administrator to investigate.</p>{% endif %}
+      </article>
+    {% endif %}
     <section class="attendance-panel"><h2>Attendance</h2><p class="muted">{% if object.status == "completed" %}Attendance has been confirmed. An administrator can record earnings corrections in Payouts.{% else %}Correct attendance if someone forgot to check in at reception.{% endif %}</p>
       {% for row in attendance_rows %}
         <div class="attendance-row"><div><strong>{{ row.user.get_full_name|default:row.user.username }}</strong>{% if row.attendance %}<span class="status status-{{ row.attendance.status }}">{{ row.attendance.get_status_display }}</span>{% else %}<span class="status status-booked">Booked</span>{% endif %}</div>

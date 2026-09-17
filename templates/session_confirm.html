@@ -7,6 +7,7 @@
   <p>{{ attended }} attended / {{ session.participants.count }} booked</p>
   <p>{{ attended }} × {{ session.trainer.rate_per_participant }} PLN = <strong>{{ amount }} PLN</strong></p>
   <p>Only attendees count toward earnings. Check attendance before confirming. This fixes the amount and makes it ready for payout.</p>
+  {% if session.ends_in_future %}<p class="notice">The scheduled end time has not passed. Confirming now immediately records attendance and makes earnings due for payment. Confirm only if this session has actually finished.</p>{% endif %}
   {% if not attended %}<p>No attendees are marked. Confirming will record zero earnings.</p>{% endif %}
   <form method="post">{% csrf_token %}<input type="hidden" name="selection" value="{{ selection }}"><button>Confirm {{ amount }} PLN</button></form>
   {% endif %}

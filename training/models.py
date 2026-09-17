@@ -8,7 +8,7 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.urls import reverse
 from django.utils import timezone
 
@@ -29,6 +29,11 @@ class User(AbstractUser):
 
     def get_absolute_url(self) -> str:
         return reverse("training:profile")
+
+    @property
+    def is_trainer(self) -> bool:
+        """A linked profile grants trainer access; kiosk accounts stay restricted."""
+        return self.is_active and self.role != self.Role.KIOSK and hasattr(self, "trainer_profile")
 
 
 class Specialization(models.Model):
@@ -117,6 +122,10 @@ class TrainingSession(models.Model):
     def get_absolute_url(self) -> str:
         return reverse("training:session-detail", args=[self.pk])
 
+    @property
+    def ends_in_future(self) -> bool:
+        return self.starts_at + timedelta(minutes=self.duration_minutes) > timezone.now()
+
     def clean(self) -> None:
         if self.starts_at and self.starts_at <= timezone.now():
             raise ValidationError({"starts_at": "Choose a future time."})
@@ -130,9 +139,18 @@ class TrainingSession(models.Model):
                     {"trainer": "Trainer must teach this specialization."},
                 )
 
+    @transaction.atomic
     def save(self, *args: Any, **kwargs: Any) -> None:
+        if self.pk:
+            previous = type(self).objects.select_for_update().get(pk=self.pk)
+            if previous.status == self.Status.COMPLETED:
+                frozen = ("status", "trainer_id", "starts_at", "duration_minutes", "completed_at", "completed_by_id")
+                if any(getattr(previous, field) != getattr(self, field) for field in frozen):
+                    raise ValidationError("Confirmed sessions are fixed. Record an earnings correction instead.")
         if self.status == self.Status.COMPLETED and self.completed_at is None:
             self.completed_at = timezone.now()
+            if kwargs.get("update_fields"):
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"completed_at"}
         super().save(*args, **kwargs)
         if self.status == self.Status.COMPLETED:
             participant_count = self.attendance_records.filter(
@@ -149,12 +167,13 @@ class TrainingSession(models.Model):
                 },
             )
             if not created and accrual.status == SalaryAccrual.Status.ACCRUED:
+                accrual.trainer = self.trainer
                 accrual.participant_count = participant_count
                 accrual.rate_per_participant = self.trainer.rate_per_participant
                 accrual.amount = participant_count * self.trainer.rate_per_participant
                 accrual.status = SalaryAccrual.Status.READY
                 accrual.save(update_fields=[
-                    "participant_count", "rate_per_participant", "amount", "status",
+                    "trainer", "participant_count", "rate_per_participant", "amount", "status",
                 ])
 
 

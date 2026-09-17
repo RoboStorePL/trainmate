@@ -48,6 +48,59 @@ class TrainMateTests(TestCase):
     def setUp(self) -> None:
         self.client.force_login(self.user)
 
+    def test_linked_trainer_with_client_role_can_see_only_own_earnings(self):
+        self.trainer.user = self.user
+        self.trainer.save()
+        self.session.participants.add(self.user)
+        SessionAttendance.objects.create(session=self.session, user=self.user, status="attended")
+        self.confirm_session()
+        self.confirm_session()
+        self.assertEqual(SalaryAccrual.objects.filter(session=self.session).count(), 1)
+        response = self.client.get(reverse("training:trainer-earnings"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_earned"], Decimal("10"))
+        self.assertContains(response, "My earnings")
+        other = get_user_model().objects.create_user(username="other-trainer", role="trainer")
+        Trainer.objects.create(name="Other", user=other)
+        self.client.force_login(other)
+        response = self.client.get(reverse("training:trainer-earnings"))
+        self.assertEqual(response.context["total_earned"], 0)
+        self.assertNotContains(response, self.session.title)
+        self.assertEqual(self.client.post(reverse("training:session-complete", args=[self.session.pk])).status_code, 403)
+
+    def test_trainer_role_without_profile_does_not_grant_earnings_access(self):
+        self.user.role = "trainer"
+        self.user.save()
+        self.assertEqual(self.client.get(reverse("training:trainer-earnings")).status_code, 403)
+        self.assertNotContains(self.client.get(reverse("training:home")), "My earnings")
+
+    def test_confirmation_is_atomic_if_accrual_creation_fails(self):
+        from unittest.mock import patch
+        with patch.object(SalaryAccrual.objects, "get_or_create", side_effect=RuntimeError("failed")):
+            self.session.status = "completed"
+            with self.assertRaises(RuntimeError):
+                self.session.save()
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "scheduled")
+        self.assertIsNone(self.session.completed_at)
+
+    def test_confirmed_session_cannot_be_reopened(self):
+        self.session.status = "completed"
+        self.session.save(update_fields=["status"])
+        self.session.refresh_from_db()
+        self.assertIsNotNone(self.session.completed_at)
+        self.session.status = "scheduled"
+        with self.assertRaises(ValidationError):
+            self.session.save()
+
+    def test_missing_earnings_are_explained_and_future_confirmation_warns(self):
+        self.trainer.user = self.user
+        self.trainer.save()
+        response = self.client.get(reverse("training:session-complete", args=[self.session.pk]))
+        self.assertContains(response, "scheduled end time has not passed")
+        TrainingSession.objects.filter(pk=self.session.pk).update(status="completed")
+        self.assertContains(self.client.get(reverse("training:trainer-earnings")), "earnings record is missing")
+
     def test_pages_render(self) -> None:
         names = ["home", "session-list", "trainer-list", "specialization-list",
                  "profile", "vision-dashboard"]

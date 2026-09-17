@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
   <h1>My earnings</h1>
-  <div class="stats"><article><strong>{{ hold_total }} PLN</strong><span>Expected</span></article><article><strong>{{ confirmed_total }} PLN</strong><span>Due for payment</span></article><article><strong>{{ paid_total }} PLN</strong><span>Paid</span></article></div>
+  <div class="stats"><article><strong>{{ total_earned|floatformat:2 }} PLN</strong><span>Total earned</span></article><article><strong>{{ confirmed_total|floatformat:2 }} PLN</strong><span>Due for payment</span></article><article><strong>{{ paid_total|floatformat:2 }} PLN</strong><span>Paid</span></article></div>
+  <p>Expected (not confirmed): {{ hold_total|floatformat:2 }} PLN.</p>
   <p class="muted">All-time totals. Expected amounts are booking estimates. Confirmation fixes earnings based on attendance.</p>
   {% include "payout_history.html" %}
   <h2>Earnings journal</h2>
   <div class="cards">{% for accrual in accruals %}<article>
-    <span class="tag">{{ accrual.get_status_display }}</span><h2>{{ accrual.session.title }}</h2>
+    <span class="tag">{{ accrual.get_status_display }}</span><h2><a href="{{ accrual.session.get_absolute_url }}">{{ accrual.session.title }}</a></h2>
+    <p>{{ accrual.session.starts_at|date:"d M Y H:i" }}</p>
     <p>{{ accrual.participant_count }} participants × {{ accrual.rate_per_participant }} PLN</p>
     <p><strong>{{ accrual.amount }} PLN</strong></p>
+    {% if not accrual.participant_count %}<p>No participants were confirmed as attended when this amount was recorded.</p>{% elif not accrual.rate_per_participant %}<p>The rate at confirmation was 0 PLN.</p>{% endif %}
+    {% if accrual.confirmed_at %}<p>Confirmed: {{ accrual.confirmed_at|date:"d M Y H:i" }}</p>{% endif %}
+    {% if accrual.paid_at %}<p>Paid: {{ accrual.paid_at|date:"d M Y H:i" }}</p>{% endif %}
   </article>{% empty %}<p>No completed sessions with earnings yet.</p>{% endfor %}</div>
   {% include "salary_adjustments.html" %}
+  {% for session in missing_accrual_sessions %}<p class="notice">{{ session.title }}: completed, but the earnings record is missing. Contact an administrator.</p>{% endfor %}
 {% endblock %}
